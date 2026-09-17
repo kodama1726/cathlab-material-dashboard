@@ -614,8 +614,10 @@
     if (!btn) return;
     document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b === btn));
     document.querySelectorAll('section.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.sidebar-panel').forEach(p => p.classList.remove('active'));
     activeTab = btn.dataset.tab;
     document.getElementById('panel-' + activeTab).classList.add('active');
+    document.getElementById('sidebar-' + activeTab).classList.add('active');
     renderActiveTab();
   });
 

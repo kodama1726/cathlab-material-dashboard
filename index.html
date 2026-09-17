@@ -42,19 +42,29 @@ header{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:
 .brand p{margin:0;font-size:12px;color:var(--muted);}
 .theme-btn{border:1px solid var(--border);background:var(--surface-2);color:var(--text-sec);border-radius:999px;width:34px;height:34px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;flex:none;}
 .theme-btn:hover{color:var(--text);}
-nav.tabs{display:flex;gap:4px;padding:0 24px;max-width:1440px;margin:0 auto;overflow-x:auto;}
-nav.tabs button{border:none;background:transparent;color:var(--text-sec);padding:10px 16px;font-size:13.5px;font-weight:600;cursor:pointer;border-radius:8px 8px 0 0;white-space:nowrap;border-bottom:2px solid transparent;}
+nav.tabs{display:flex;gap:8px;padding:0 24px;max-width:1440px;margin:0 auto;overflow-x:auto;}
+nav.tabs button{border:none;background:transparent;color:var(--text-sec);padding:16px 24px;font-size:16.5px;font-weight:700;cursor:pointer;border-radius:10px 10px 0 0;white-space:nowrap;border-bottom:3px solid transparent;}
 nav.tabs button:hover{background:var(--surface-2);}
-nav.tabs button.active{color:var(--s1);border-bottom:2px solid var(--s1);}
+nav.tabs button.active{color:var(--s1);border-bottom:3px solid var(--s1);}
 .disclaimer{max-width:1440px;margin:10px auto 0;padding:9px 24px;font-size:11.5px;color:var(--muted);}
-main{max-width:1440px;margin:0 auto;padding:20px 24px 64px;}
+.layout{display:flex;align-items:flex-start;max-width:1440px;margin:0 auto;}
+.sidebar{width:264px;flex:0 0 264px;padding:20px 18px 40px;border-right:1px solid var(--border);}
+.sidebar-panel{display:none;}
+.sidebar-panel.active{display:block;}
+.sidebar-panel .sidebar-title{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:0 0 14px;}
+.filter-group{margin-bottom:16px;}
+.filter-group label{display:block;font-size:12.5px;font-weight:700;color:var(--text-sec);margin-bottom:6px;}
+.filter-group select, .filter-group input[type=text]{width:100%;font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);}
+.filter-group .checkbox-row{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-sec);}
+.filter-group .checkbox-row input{flex:none;}
+.sidebar .hint{display:block;font-size:11.5px;color:var(--muted);line-height:1.6;margin-top:4px;padding-top:14px;border-top:1px solid var(--border);}
+main{flex:1;min-width:0;padding:20px 24px 64px;}
 section.panel{display:none;}
 section.panel.active{display:block;}
-.filterbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:18px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);}
-.filterbar label{font-size:12.5px;color:var(--text-sec);font-weight:600;display:flex;align-items:center;gap:6px;}
-.filterbar select, .filterbar input[type=text]{font-size:13px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);}
-.filterbar .spacer{flex:1;}
-.filterbar .hint{font-size:11.5px;color:var(--muted);}
+@media (max-width:860px){
+  .layout{flex-direction:column;}
+  .sidebar{width:100%;flex:none;border-right:none;border-bottom:1px solid var(--border);padding:16px;}
+}
 .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px;}
 .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow);}
 .kpi .label{font-size:12px;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:5px;}
@@ -142,18 +152,61 @@ footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;colo
   <div class="disclaimer">※「他施設ベンチマーク」の施設B〜Eおよび「在庫情報」の在庫数量・週間予測は、自施設の実績データを統計的に加工して生成した<b>模擬データ</b>です。実在の医療機関の情報ではありません。</div>
 </header>
 
+<div class="layout">
+<aside class="sidebar">
+  <div class="sidebar-panel active" id="sidebar-overview">
+    <p class="sidebar-title">フィルター</p>
+    <div class="filter-group">
+      <label>処置内容</label>
+      <select id="ovProc"></select>
+    </div>
+    <span class="hint" id="ovPeriodHint"></span>
+  </div>
+  <div class="sidebar-panel" id="sidebar-benchmark">
+    <p class="sidebar-title">フィルター</p>
+    <div class="filter-group">
+      <label>処置内容</label>
+      <select id="bmProc"></select>
+    </div>
+    <span class="hint">施設A=自施設(実績値) / 施設B〜E=模擬データ</span>
+  </div>
+  <div class="sidebar-panel" id="sidebar-dealer">
+    <p class="sidebar-title">フィルター</p>
+    <div class="filter-group">
+      <label>処置内容</label>
+      <select id="dmProc"></select>
+    </div>
+    <span class="hint">施設別メーカー浸透度は全処置合計の値です(模擬データのため処置別内訳は非対応)</span>
+  </div>
+  <div class="sidebar-panel" id="sidebar-inventory">
+    <p class="sidebar-title">フィルター</p>
+    <div class="filter-group">
+      <label>カテゴリ</label>
+      <select id="invCategory"></select>
+    </div>
+    <div class="filter-group">
+      <label>区分</label>
+      <select id="invConsignment">
+        <option value="all">すべて</option>
+        <option value="1">預託品</option>
+        <option value="0">買取品</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>検索</label>
+      <input type="text" id="invSearch" class="search-input" placeholder="品名・メーカーで検索">
+    </div>
+    <div class="filter-group">
+      <div class="checkbox-row"><input type="checkbox" id="invRiskOnly"><label style="margin:0;font-weight:400;">欠品リスクのみ表示</label></div>
+    </div>
+    <span class="hint">RFID棚在庫は実データが無いため、使用実績から統計的に推定した模擬値です<span class="info-dot" title="【定数(パー値)の設定方法】一般的なSPD運用の考え方「定数=日次消費量×リードタイム+安全在庫」を土台に、所有形態別の実務傾向を反映しています。&#10;・預託品(仕入先所有):欠品防止のためサイズ/型番違いを含め手厚く持つのが一般的なため10〜20本&#10;・買取の特定保険医療材料(自己資産の高額品):過剰在庫を避け3〜8本&#10;・一般消耗品(ガーゼ・シリンジ等):箱単位での補充が実務的なため12〜25本">i</span></span>
+  </div>
+</aside>
+
 <main>
 
   <!-- ============ TAB 1: データ概観 ============ -->
   <section class="panel active" id="panel-overview">
-    <div class="filterbar">
-      <label>処置内容
-        <select id="ovProc"></select>
-      </label>
-      <span class="spacer"></span>
-      <span class="hint" id="ovPeriodHint"></span>
-    </div>
-
     <div class="kpi-row" id="ovKpis"></div>
 
     <div class="grid">
@@ -192,14 +245,6 @@ footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;colo
 
   <!-- ============ TAB 2: 他施設ベンチマーク ============ -->
   <section class="panel" id="panel-benchmark">
-    <div class="filterbar">
-      <label>処置内容
-        <select id="bmProc"></select>
-      </label>
-      <span class="spacer"></span>
-      <span class="hint">施設A=自施設(実績値) / 施設B〜E=模擬データ</span>
-    </div>
-
     <div class="profile-grid" id="bmProfiles"></div>
 
     <div class="card wide" style="margin-bottom:18px;">
@@ -246,14 +291,6 @@ footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;colo
 
   <!-- ============ TAB 3: ディーラー・メーカー市場戦略 ============ -->
   <section class="panel" id="panel-dealer">
-    <div class="filterbar">
-      <label>処置内容
-        <select id="dmProc"></select>
-      </label>
-      <span class="spacer"></span>
-      <span class="hint">施設別メーカー浸透度は全処置合計の値です(模擬データのため処置別内訳は非対応)</span>
-    </div>
-
     <div class="kpi-row" id="dmKpis"></div>
 
     <div class="grid">
@@ -295,23 +332,6 @@ footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;colo
 
   <!-- ============ TAB 4: 在庫情報 ============ -->
   <section class="panel" id="panel-inventory">
-    <div class="filterbar">
-      <label>カテゴリ
-        <select id="invCategory"></select>
-      </label>
-      <label>区分
-        <select id="invConsignment">
-          <option value="all">すべて</option>
-          <option value="1">預託品</option>
-          <option value="0">買取品</option>
-        </select>
-      </label>
-      <label><input type="checkbox" id="invRiskOnly"> 欠品リスクのみ表示</label>
-      <input type="text" id="invSearch" class="search-input" placeholder="品名・メーカーで検索">
-      <span class="spacer"></span>
-      <span class="hint">RFID棚在庫は実データが無いため、使用実績から統計的に推定した模擬値です<span class="info-dot" title="【定数(パー値)の設定方法】一般的なSPD運用の考え方「定数=日次消費量×リードタイム+安全在庫」を土台に、所有形態別の実務傾向を反映しています。&#10;・預託品(仕入先所有):欠品防止のためサイズ/型番違いを含め手厚く持つのが一般的なため10〜20本&#10;・買取の特定保険医療材料(自己資産の高額品):過剰在庫を避け3〜8本&#10;・一般消耗品(ガーゼ・シリンジ等):箱単位での補充が実務的なため12〜25本">i</span></span>
-    </div>
-
     <div class="kpi-row" id="invKpis"></div>
 
     <div class="grid grid-2">
@@ -336,6 +356,7 @@ footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;colo
   </section>
 
 </main>
+</div>
 
 <footer>
   カテーテル室 医療材料ダッシュボード(ローカル版) ・ データ集計対象期間: <span id="footPeriod"></span> ・ 生成日時: <span id="footGenerated"></span>
