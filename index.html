@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>カテーテル室 医療材料ダッシュボード</title>
+<style>
+:root{
+  color-scheme: light;
+  --page:#f9f9f7; --surface:#fcfcfb; --surface-2:#f2f1ee;
+  --text:#0b0b0b; --text-sec:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,0.10);
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s6:#008300; --s7:#4a3aa7; --s8:#e34948;
+  --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+  --radius:14px;
+  --shadow: 0 1px 2px rgba(11,11,11,0.04), 0 4px 16px rgba(11,11,11,0.04);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --page:#0d0d0d; --surface:#1a1a19; --surface-2:#232322;
+    --text:#ffffff; --text-sec:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#008300; --s7:#9085e9; --s8:#e66767;
+    --shadow: 0 1px 2px rgba(0,0,0,0.2), 0 4px 20px rgba(0,0,0,0.3);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --page:#0d0d0d; --surface:#1a1a19; --surface-2:#232322;
+  --text:#ffffff; --text-sec:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#008300; --s7:#9085e9; --s8:#e66767;
+  --shadow: 0 1px 2px rgba(0,0,0,0.2), 0 4px 20px rgba(0,0,0,0.3);
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--page);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;}
+header{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:1px solid var(--border);}
+.header-top{display:flex;align-items:center;justify-content:space-between;padding:14px 24px 10px;max-width:1440px;margin:0 auto;gap:16px;flex-wrap:wrap;}
+.brand{display:flex;flex-direction:column;gap:2px;}
+.brand h1{font-size:17px;margin:0;font-weight:700;letter-spacing:.01em;}
+.brand p{margin:0;font-size:12px;color:var(--muted);}
+.theme-btn{border:1px solid var(--border);background:var(--surface-2);color:var(--text-sec);border-radius:999px;width:34px;height:34px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;flex:none;}
+.theme-btn:hover{color:var(--text);}
+nav.tabs{display:flex;gap:4px;padding:0 24px;max-width:1440px;margin:0 auto;overflow-x:auto;}
+nav.tabs button{border:none;background:transparent;color:var(--text-sec);padding:10px 16px;font-size:13.5px;font-weight:600;cursor:pointer;border-radius:8px 8px 0 0;white-space:nowrap;border-bottom:2px solid transparent;}
+nav.tabs button:hover{background:var(--surface-2);}
+nav.tabs button.active{color:var(--s1);border-bottom:2px solid var(--s1);}
+.disclaimer{max-width:1440px;margin:10px auto 0;padding:9px 24px;font-size:11.5px;color:var(--muted);}
+main{max-width:1440px;margin:0 auto;padding:20px 24px 64px;}
+section.panel{display:none;}
+section.panel.active{display:block;}
+.filterbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:18px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);}
+.filterbar label{font-size:12.5px;color:var(--text-sec);font-weight:600;display:flex;align-items:center;gap:6px;}
+.filterbar select, .filterbar input[type=text]{font-size:13px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);}
+.filterbar .spacer{flex:1;}
+.filterbar .hint{font-size:11.5px;color:var(--muted);}
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px;}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow);}
+.kpi .label{font-size:12px;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:5px;}
+.kpi .value{font-size:24px;font-weight:700;margin-top:6px;font-variant-numeric:proportional-nums;}
+.kpi .sub{font-size:11.5px;color:var(--text-sec);margin-top:3px;}
+.info-dot{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:var(--surface-2);color:var(--muted);font-size:10px;font-weight:700;cursor:help;flex:none;}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:18px;}
+.grid.grid-2{grid-template-columns:repeat(auto-fit,minmax(340px,1fr));}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);}
+.card.wide{grid-column:1/-1;}
+.card h3{margin:0 0 2px;font-size:14px;font-weight:700;}
+.card .card-sub{font-size:11.5px;color:var(--muted);margin-bottom:10px;}
+.chart-wrap{position:relative;height:280px;}
+.chart-wrap.tall{height:340px;}
+.chart-wrap.short{height:220px;}
+table{width:100%;border-collapse:collapse;font-size:12.5px;}
+thead th{text-align:left;color:var(--muted);font-weight:600;font-size:11.5px;padding:6px 8px;border-bottom:1px solid var(--grid);position:sticky;top:0;background:var(--surface);}
+tbody td{padding:7px 8px;border-bottom:1px solid var(--grid);}
+tbody tr:hover{background:var(--surface-2);}
+.table-scroll{max-height:420px;overflow:auto;border:1px solid var(--grid);border-radius:10px;}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;}
+.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;}
+.badge.good{color:var(--good);background:color-mix(in srgb, var(--good) 14%, transparent);}
+.badge.warning{color:#8a5a00;background:color-mix(in srgb, var(--warning) 24%, transparent);}
+.badge.serious{color:#9c3d1c;background:color-mix(in srgb, var(--serious) 22%, transparent);}
+.badge.critical{color:var(--critical);background:color-mix(in srgb, var(--critical) 16%, transparent);}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .badge.warning{color:#ffd479;} :root:not([data-theme="light"]) .badge.serious{color:#ffb28f;} }
+:root[data-theme="dark"] .badge.warning{color:#ffd479;}
+:root[data-theme="dark"] .badge.serious{color:#ffb28f;}
+.fill-bar{position:relative;width:80px;height:8px;background:var(--surface-2);border-radius:5px;overflow:hidden;display:inline-block;vertical-align:middle;margin-right:6px;}
+.fill-bar span{position:absolute;left:0;top:0;bottom:0;border-radius:5px;}
+.profile-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-bottom:18px;}
+.profile-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);position:relative;}
+.profile-card.own{border-color:var(--s1);box-shadow:0 0 0 1.5px var(--s1) inset, var(--shadow);}
+.profile-card .letter{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff;margin-bottom:8px;}
+.profile-card .fname{font-weight:700;font-size:13.5px;}
+.profile-card .frow{font-size:12px;color:var(--text-sec);margin-top:6px;display:flex;justify-content:space-between;}
+.profile-card .frow b{color:var(--text);font-weight:600;}
+.profile-card .note{margin-top:8px;font-size:10.5px;color:var(--muted);font-style:italic;}
+.legend-row{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;font-size:11.5px;color:var(--text-sec);}
+.legend-row .item{display:flex;align-items:center;gap:5px;}
+.legend-row .dot{width:9px;height:9px;border-radius:50%;}
+.heatcell{padding:8px 6px;text-align:center;font-size:11.5px;font-weight:600;border-radius:6px;}
+.search-input{min-width:180px;}
+.usetype-bar{display:flex;height:26px;border-radius:8px;overflow:hidden;margin:14px 0 18px;}
+.usetype-bar div{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;}
+.usetype-legend{display:flex;flex-direction:column;gap:10px;}
+.usetype-legend .row{display:flex;align-items:center;justify-content:space-between;font-size:13px;}
+.usetype-legend .row .name{display:flex;align-items:center;gap:8px;color:var(--text-sec);}
+.usetype-legend .row .dot{width:10px;height:10px;border-radius:3px;}
+.usetype-legend .row .num{font-weight:700;color:var(--text);}
+.position-track-wrap{padding:34px 22px 40px;}
+.position-track{position:relative;height:5px;background:var(--grid);border-radius:3px;}
+.position-track .dot{position:absolute;top:50%;transform:translate(-50%,-50%);width:15px;height:15px;border-radius:50%;box-shadow:0 0 0 2px var(--surface);z-index:1;}
+.position-track .dot.own{width:21px;height:21px;box-shadow:0 0 0 3px var(--surface),0 0 0 4.5px var(--s1);z-index:2;}
+.position-track .dot-label{position:absolute;top:14px;transform:translateX(-50%);font-size:11px;font-weight:700;white-space:nowrap;color:var(--text);}
+.position-track .dot-value{position:absolute;bottom:14px;transform:translateX(-50%);font-size:10.5px;color:var(--text-sec);white-space:nowrap;}
+.position-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:6px;}
+.position-summary .box{background:var(--surface-2);border-radius:10px;padding:12px 16px;}
+.position-summary .box .t{font-size:11.5px;color:var(--muted);font-weight:600;}
+.position-summary .box .v{font-size:19px;font-weight:700;margin-top:4px;}
+.position-summary .box .v.good{color:var(--good);}
+.position-summary .box .v.critical{color:var(--critical);}
+.position-summary .box .s{font-size:11.5px;color:var(--text-sec);margin-top:2px;}
+footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;color:var(--muted);}
+@media (max-width:640px){ .header-top{padding:12px 16px 8px;} nav.tabs{padding:0 16px;} main{padding:16px 16px 48px;} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-top">
+    <div class="brand">
+      <h1>カテーテル室 医療材料ダッシュボード</h1>
+      <p>循環器内科カテーテル室 医療材料使用実績・在庫データ分析</p>
+    </div>
+    <button class="theme-btn" id="themeToggle" title="ライト/ダーク切替">🌓</button>
+  </div>
+  <nav class="tabs" id="tabNav">
+    <button data-tab="overview" class="active">データ概観</button>
+    <button data-tab="benchmark">他施設ベンチマーク</button>
+    <button data-tab="dealer">ディーラー・メーカー市場戦略</button>
+    <button data-tab="inventory">在庫情報</button>
+  </nav>
+  <div class="disclaimer">※「他施設ベンチマーク」の施設B〜Eおよび「在庫情報」の在庫数量・週間予測は、自施設の実績データを統計的に加工して生成した<b>模擬データ</b>です。実在の医療機関の情報ではありません。</div>
+</header>
+
+<main>
+
+  <!-- ============ TAB 1: データ概観 ============ -->
+  <section class="panel active" id="panel-overview">
+    <div class="filterbar">
+      <label>処置内容
+        <select id="ovProc"></select>
+      </label>
+      <span class="spacer"></span>
+      <span class="hint" id="ovPeriodHint"></span>
+    </div>
+
+    <div class="kpi-row" id="ovKpis"></div>
+
+    <div class="grid">
+      <div class="card">
+        <h3>処置内訳(全体)<span class="info-dot" title="【グラフの種類】横棒グラフ&#10;【わかること】PCI(待機的/緊急)・アブレーション・PM/ICD/CRT植込など、どの処置内容が症例数として多いか、全体の構成バランスがわかります。">i</span></h3>
+        <div class="card-sub">Kコード別の症例構成(推定症例ベース)</div>
+        <div class="chart-wrap"><canvas id="chartProcBreakdown"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>月別 推定症例数の推移<span class="info-dot" title="【グラフの種類】折れ線グラフ&#10;【わかること】症例数が月ごとにどう増減しているか、繁忙期・閑散期の傾向や急な増減がわかります。">i</span></h3>
+        <div class="card-sub" id="ovTrendSub">フィルタ条件に応じて再集計</div>
+        <div class="chart-wrap"><canvas id="chartMonthlyTrend"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>在庫区分の内訳<span class="info-dot" title="【グラフの種類】ドーナツグラフ&#10;【わかること】使用材料のうち「定数品(常時ラック在庫)」「持ち込み品(症例ごとの持込)」「緊急使用」の割合がわかり、在庫管理上どの区分が中心かが把握できます。">i</span></h3>
+        <div class="card-sub">定数品 / 持ち込み品 / 緊急使用(レコード数)</div>
+        <div class="chart-wrap"><canvas id="chartStockType"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>使用区分の内訳<span class="info-dot" title="【グラフの種類】構成比バー(100%積み上げ)&#10;【わかること】払い出した材料のうち実際に患者に使用された割合と、破棄・破損した割合(ロス率)がわかります。">i</span></h3>
+        <div class="card-sub">患者消費 / 破棄破損(レコード数)・件数差が大きいため比率バーで表示</div>
+        <div id="useTypeStat"></div>
+      </div>
+      <div class="card">
+        <h3>メーカー内訳 TOP10<span class="info-dot" title="【グラフの種類】横棒グラフ&#10;【わかること】どのメーカーの製品を多く使用しているか、上位メーカーへの依存度がわかります。">i</span></h3>
+        <div class="card-sub">レコード数ベース</div>
+        <div class="chart-wrap tall"><canvas id="chartMakerTop10"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>特定保険医療材料 TOP10<span class="info-dot" title="【グラフの種類】横棒グラフ&#10;【わかること】どの材料区分(カテーテル・ステント等)の使用頻度が高いか、主要な材料構成がわかります。">i</span></h3>
+        <div class="card-sub">材料区分(特定保健医療器材名)別・レコード数ベース</div>
+        <div class="chart-wrap tall"><canvas id="chartMaterialTop10"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TAB 2: 他施設ベンチマーク ============ -->
+  <section class="panel" id="panel-benchmark">
+    <div class="filterbar">
+      <label>処置内容
+        <select id="bmProc"></select>
+      </label>
+      <span class="spacer"></span>
+      <span class="hint">施設A=自施設(実績値) / 施設B〜E=模擬データ</span>
+    </div>
+
+    <div class="profile-grid" id="bmProfiles"></div>
+
+    <div class="card wide" style="margin-bottom:18px;">
+      <h3>自施設の経済性ポジショニング<span class="info-dot" title="【グラフの種類】数直線(ドットプロット)。1症例あたり平均材料償還額の軸上に5施設を配置します。&#10;【わかること】自施設が5施設の中で費用面のどの位置にいるか、最も材料コスト効率の高い施設や5施設平均とどれだけ差があるかが一目でわかります。">i</span></h3>
+      <div class="card-sub">1症例あたり平均材料償還額(低いほど材料コスト効率が高い)を基準に比較。選択中の処置内容に連動します</div>
+      <div class="position-track-wrap"><div class="position-track" id="bmPositionTrack"></div></div>
+      <div class="position-summary" id="bmPositionSummary"></div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3>1症例あたり平均材料償還額<span class="info-dot" title="【グラフの種類】縦棒グラフ&#10;【わかること】施設ごとの1症例あたり材料コストの水準を比較でき、自施設が高コスト側か低コスト側かがわかります。">i</span></h3>
+        <div class="card-sub" id="bmSub1">選択中の処置内容で比較</div>
+        <div class="chart-wrap"><canvas id="chartBmReimburse"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>1症例あたり平均機材点数<span class="info-dot" title="【グラフの種類】縦棒グラフ&#10;【わかること】施設ごとに1症例で使用する材料の点数(手技の複雑さ・材料使用量の目安)を比較できます。">i</span></h3>
+        <div class="card-sub" id="bmSub2">選択中の処置内容で比較</div>
+        <div class="chart-wrap"><canvas id="chartBmItems"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>年間症例数(推定/想定)<span class="info-dot" title="【グラフの種類】縦棒グラフ&#10;【わかること】施設規模(症例ボリューム)の違いがわかります。">i</span></h3>
+        <div class="card-sub">施設規模の比較</div>
+        <div class="chart-wrap"><canvas id="chartBmVolume"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>自施設との類似度<span class="info-dot" title="【グラフの種類】横棒グラフ&#10;【わかること】処置構成比から算出した類似度により、自施設と症例傾向が近い施設が一目でわかります(ベンチマーク相手の選定に有用)。">i</span></h3>
+        <div class="card-sub">処置構成比のコサイン類似度(1.0に近いほど症例傾向が類似)</div>
+        <div class="chart-wrap"><canvas id="chartBmSimilarity"></canvas></div>
+      </div>
+      <div class="card wide">
+        <h3>処置構成比の比較<span class="info-dot" title="【グラフの種類】100%積み上げ横棒グラフ&#10;【わかること】各施設がどの処置(PCI・アブレーション・PM/ICD等)にどれだけ注力しているか、診療の得意分野の違いがわかります。">i</span></h3>
+        <div class="card-sub">施設別・処置内容の構成比(100%積み上げ、全処置対象)</div>
+        <div class="chart-wrap tall"><canvas id="chartBmMix"></canvas></div>
+      </div>
+      <div class="card wide">
+        <h3>施設サマリ表<span class="info-dot" title="【種類】表&#10;【わかること】主要指標を一覧化し、詳細な数値で施設間を比較できます。">i</span></h3>
+        <div class="table-scroll">
+          <table id="bmTable"><thead></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TAB 3: ディーラー・メーカー市場戦略 ============ -->
+  <section class="panel" id="panel-dealer">
+    <div class="filterbar">
+      <label>処置内容
+        <select id="dmProc"></select>
+      </label>
+      <span class="spacer"></span>
+      <span class="hint">施設別メーカー浸透度は全処置合計の値です(模擬データのため処置別内訳は非対応)</span>
+    </div>
+
+    <div class="kpi-row" id="dmKpis"></div>
+
+    <div class="grid">
+      <div class="card">
+        <h3>メーカー別シェア(自施設実績)<span class="info-dot" title="【グラフの種類】ドーナツグラフ&#10;【わかること】自施設の材料調達における主要メーカーとその構成比、上位メーカーへの集中度がわかります。">i</span></h3>
+        <div class="card-sub" id="dmSubShare">材料償還額ベース・全期間</div>
+        <div class="chart-wrap tall"><canvas id="chartMakerShare"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>主要メーカーの月別取扱額推移<span class="info-dot" title="【グラフの種類】折れ線グラフ&#10;【わかること】主要メーカーの取扱額が時系列でどう変化しているか、シェア拡大・縮小のトレンドがわかります。">i</span></h3>
+        <div class="card-sub" id="dmSubTrend">上位6社・材料償還額ベース(自施設実績)</div>
+        <div class="chart-wrap tall"><canvas id="chartMakerTrend"></canvas></div>
+      </div>
+      <div class="card wide">
+        <h3>施設別 主要メーカー浸透度<span class="info-dot" title="【グラフの種類】ヒートマップ表&#10;【わかること】どのメーカーがどの施設に強い(色が濃い)/弱い(色が薄い)かが一目でわかり、メーカー・ディーラーにとっての営業ターゲット(浸透度が低い施設)を発見できます。">i</span></h3>
+        <div class="card-sub">上位8社内でのシェア構成比(%)・施設B〜Eは模擬データ・全処置合計。色が薄いセル=シェアが低い(営業機会の可能性)</div>
+        <div class="table-scroll" style="max-height:none;">
+          <table id="penetrationTable"><thead></thead><tbody></tbody></table>
+        </div>
+      </div>
+      <div class="card wide">
+        <h3>材料カテゴリ別 市場集中度(HHI)<span class="info-dot" title="【グラフの種類】横棒グラフ(色はHHI水準による状態表示)&#10;【わかること】どの材料カテゴリが少数メーカーに集中しているか(=新規参入余地が小さい/価格交渉力が偏っている)がわかります。">i</span></h3>
+        <div class="card-sub" id="dmSubHHI">自施設実績データにおける、特定保険医療材料カテゴリ別のメーカー集中度(ハーフィンダール・ハーシュマン指数)。専用カテーテル・リード類は院内で銘柄統一されやすく、単独メーカー(HHI=10,000)になりやすい点に留意</div>
+        <div class="legend-row">
+          <span class="item"><span class="dot" style="background:var(--good)"></span>競争的 (HHI&lt;1500)</span>
+          <span class="item"><span class="dot" style="background:var(--warning)"></span>やや集中 (1500〜2500)</span>
+          <span class="item"><span class="dot" style="background:var(--critical)"></span>寡占的 (HHI&gt;2500)</span>
+        </div>
+        <div class="chart-wrap" style="height:420px;"><canvas id="chartHHI"></canvas></div>
+      </div>
+      <div class="card wide">
+        <h3>カテゴリ集中度 詳細<span class="info-dot" title="【種類】表&#10;【わかること】カテゴリごとの件数・金額・首位メーカーとそのシェア・HHI評価を数値で確認できます。">i</span></h3>
+        <div class="table-scroll">
+          <table id="hhiTable"><thead></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TAB 4: 在庫情報 ============ -->
+  <section class="panel" id="panel-inventory">
+    <div class="filterbar">
+      <label>カテゴリ
+        <select id="invCategory"></select>
+      </label>
+      <label>区分
+        <select id="invConsignment">
+          <option value="all">すべて</option>
+          <option value="1">預託品</option>
+          <option value="0">買取品</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="invRiskOnly"> 欠品リスクのみ表示</label>
+      <input type="text" id="invSearch" class="search-input" placeholder="品名・メーカーで検索">
+      <span class="spacer"></span>
+      <span class="hint">RFID棚在庫は実データが無いため、使用実績から統計的に推定した模擬値です<span class="info-dot" title="【定数(パー値)の設定方法】一般的なSPD運用の考え方「定数=日次消費量×リードタイム+安全在庫」を土台に、所有形態別の実務傾向を反映しています。&#10;・預託品(仕入先所有):欠品防止のためサイズ/型番違いを含め手厚く持つのが一般的なため10〜20本&#10;・買取の特定保険医療材料(自己資産の高額品):過剰在庫を避け3〜8本&#10;・一般消耗品(ガーゼ・シリンジ等):箱単位での補充が実務的なため12〜25本">i</span></span>
+    </div>
+
+    <div class="kpi-row" id="invKpis"></div>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <h3>充足率の分布<span class="info-dot" title="【グラフの種類】縦棒グラフ(ヒストグラム、色は充足率水準による状態表示)&#10;【わかること】在庫全体のうち、欠品リスク圏(赤)・注意圏(黄)・健全圏(緑)にあるアイテムがそれぞれどれくらいあるかがわかります。">i</span></h3>
+        <div class="card-sub">現在庫 ÷ 定数(パー値)</div>
+        <div class="chart-wrap short"><canvas id="chartFillDist"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>在庫評価額(預託 / 買取)<span class="info-dot" title="【グラフの種類】ドーナツグラフ&#10;【わかること】現在の在庫金額のうち、預託品(仕入先所有・支払は使用時)と買取品(自己資産)の内訳がわかります。">i</span></h3>
+        <div class="card-sub">現在庫数 × 償還価格</div>
+        <div class="chart-wrap short"><canvas id="chartConsignValue"></canvas></div>
+      </div>
+      <div class="card wide">
+        <h3>アイテム別 在庫状況<span class="info-dot" title="【種類】表(充足率が低い順)&#10;【わかること】アイテムごとの定数・現在庫・充足率・週間使用予測・リスク判定を確認し、補充が必要な具体的な品目を特定できます。">i</span></h3>
+        <div class="card-sub" id="invTableSub"></div>
+        <div class="table-scroll">
+          <table id="invTable"><thead></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  カテーテル室 医療材料ダッシュボード(ローカル版) ・ データ集計対象期間: <span id="footPeriod"></span> ・ 生成日時: <span id="footGenerated"></span>
+</footer>
+
+<script src="chart.umd.min.js"></script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
