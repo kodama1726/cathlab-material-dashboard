@@ -3,9 +3,9 @@
 
   // ---------------- テーマ ----------------
   const THEME = {
-    light: { series: ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'],
+    light: { series: ['#73a9f1', '#db6f47', '#51cb97', '#cb8e27', '#f886b1', '#59ab54', '#8d8ae0', '#de857e'],
              text: '#0b0b0b', textSec: '#52514e', muted: '#898781', grid: '#e1e0d9', axis: '#c3c2b7', surface: '#fcfcfb' },
-    dark:  { series: ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'],
+    dark:  { series: ['#5289ce', '#a84926', '#46a47d', '#9d5a00', '#c3718a', '#297e25', '#847dc8', '#c4716f'],
              text: '#ffffff', textSec: '#c3c2b7', muted: '#898781', grid: '#2c2c2a', axis: '#383835', surface: '#1a1a19' }
   };
   const STATUS = { good: '#0ca30c', warning: '#fab219', serious: '#ec835a', critical: '#d03b3b' };
