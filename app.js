@@ -415,7 +415,7 @@
 
     document.getElementById('dmSubShare').textContent = `材料償還額ベース・全期間・${procLabel}`;
     document.getElementById('dmSubTrend').textContent = `上位6社・材料償還額ベース(自施設実績・${procLabel})`;
-    document.getElementById('dmSubHHI').textContent = `自施設実績データ(${procLabel})における、特定保険医療材料カテゴリ別のメーカー集中度(ハーフィンダール・ハーシュマン指数)。専用カテーテル・リード類は院内で銘柄統一されやすく、単独メーカー(HHI=10,000)になりやすい点に留意`;
+    document.getElementById('dmSubHHI').textContent = `自施設データ(${procLabel})における、特定保険医療材料カテゴリ別のメーカー集中度(ハーフィンダール・ハーシュマン指数)。専用カテーテル・リード類は院内で銘柄統一されやすく、単独メーカー(HHI=10,000)になりやすい点に留意`;
 
     // メーカー別シェア(償還額ベース、選択中の処置内容・自施設実績)
     const valueByMaker = new Map();
