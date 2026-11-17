@@ -129,6 +129,18 @@ tbody tr:hover{background:var(--surface-2);}
 .position-summary .box .v.good{color:var(--good);}
 .position-summary .box .v.critical{color:var(--critical);}
 .position-summary .box .s{font-size:11.5px;color:var(--text-sec);margin-top:2px;}
+.mix-row{display:grid;grid-template-columns:210px 1fr;gap:14px;align-items:center;padding:10px;border-radius:10px;cursor:pointer;}
+.mix-row:hover{background:var(--surface-2);}
+.mix-row.active{background:var(--surface-2);box-shadow:inset 3px 0 0 var(--s1);}
+.mix-name{font-size:13px;font-weight:700;}
+.mix-name small{display:block;font-size:11px;font-weight:400;color:var(--muted);margin-top:2px;}
+.usetype-bar.mix-bar{height:22px;margin:0;background:var(--surface-2);}
+.chips{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-size:11.5px;color:var(--text-sec);}
+.chip{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;}
+.chip .dot{width:9px;height:9px;border-radius:3px;flex:none;}
+.chip.none{color:var(--muted);}
+.chip.none .dot{border:1.5px dashed var(--muted);}
+@media (max-width:640px){ .mix-row{grid-template-columns:1fr;gap:6px;} }
 footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;color:var(--muted);}
 @media (max-width:640px){ .header-top{padding:12px 16px 8px;} nav.tabs{padding:0 16px;} main{padding:16px 16px 48px;} }
 </style>
@@ -148,6 +160,7 @@ footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;colo
     <button data-tab="benchmark">他施設ベンチマーク</button>
     <button data-tab="dealer">ディーラー・メーカー市場戦略</button>
     <button data-tab="inventory">在庫情報</button>
+    <button data-tab="device">デバイス多様性</button>
   </nav>
   <div class="disclaimer">※「他施設ベンチマーク」の施設B〜Eおよび「在庫情報」の在庫数量・週間予測は、自施設の実績データを統計的に加工して生成した<b>模擬データ</b>です。実在の医療機関の情報ではありません。</div>
 </header>
@@ -200,6 +213,18 @@ footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;colo
       <div class="checkbox-row"><input type="checkbox" id="invRiskOnly"><label style="margin:0;font-weight:400;">欠品リスクのみ表示</label></div>
     </div>
     <span class="hint">RFID棚在庫は実データが無いため、使用実績から統計的に推定した模擬値です<span class="info-dot" title="【定数(パー値)の設定方法】一般的なSPD運用の考え方「定数=日次消費量×リードタイム+安全在庫」を土台に、所有形態別の実務傾向を反映しています。&#10;・預託品(仕入先所有):欠品防止のためサイズ/型番違いを含め手厚く持つのが一般的なため10〜20本&#10;・買取の特定保険医療材料(自己資産の高額品):過剰在庫を避け3〜8本&#10;・一般消耗品(ガーゼ・シリンジ等):箱単位での補充が実務的なため12〜25本">i</span></span>
+  </div>
+  <div class="sidebar-panel" id="sidebar-device">
+    <p class="sidebar-title">フィルター</p>
+    <div class="filter-group">
+      <label>領域</label>
+      <select id="dvDomain"></select>
+    </div>
+    <div class="filter-group">
+      <label>デバイス群</label>
+      <select id="dvGroup"></select>
+    </div>
+    <span class="hint">方式(高周波・クライオバルーン・パルスフィールド等)は品名・規格から自動分類しています。自施設で使用実績のない主な方式も「実績なし」として表示します</span>
   </div>
 </aside>
 
@@ -350,6 +375,36 @@ footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;colo
         <div class="card-sub" id="invTableSub"></div>
         <div class="table-scroll">
           <table id="invTable"><thead></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TAB 5: デバイス多様性 ============ -->
+  <section class="panel" id="panel-device">
+    <div class="kpi-row" id="dvKpis"></div>
+
+    <div class="grid">
+      <div class="card wide">
+        <h3>デバイス群ごとの方式構成<span class="info-dot" title="【グラフの種類】構成比バー(100%積み上げ)&#10;【わかること】例えばアブレーションカテーテルなら高周波・クライオバルーン・パルスフィールド等、同じ用途のデバイスをどの方式でどれだけ使い分けているか(デバイスの多様性)と、未採用の方式がわかります。">i</span></h3>
+        <div class="card-sub" id="dvMixSub"></div>
+        <div id="dvMix"></div>
+      </div>
+      <div class="card">
+        <h3>方式別 使用件数<span class="info-dot" title="【グラフの種類】横棒グラフ&#10;【わかること】選択中のデバイス群で、各方式がどれだけ使われているか、実績のない方式はどれかがわかります。">i</span></h3>
+        <div class="card-sub" id="dvTypeSub"></div>
+        <div class="chart-wrap"><canvas id="chartDvType"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>方式別 四半期推移<span class="info-dot" title="【グラフの種類】積み上げ縦棒グラフ&#10;【わかること】方式の使い分けが時期によってどう変化しているか(新しい方式への切替・併用の傾向)がわかります。">i</span></h3>
+        <div class="card-sub">使用件数(本数)ベース</div>
+        <div class="chart-wrap"><canvas id="chartDvTrend"></canvas></div>
+      </div>
+      <div class="card wide">
+        <h3>製品一覧<span class="info-dot" title="【種類】表(方式順・使用件数順)&#10;【わかること】各方式に属する具体的な製品・メーカー・使用件数・群内シェア・償還額を確認できます。">i</span></h3>
+        <div class="card-sub" id="dvTableSub"></div>
+        <div class="table-scroll">
+          <table id="dvTable"><thead></thead><tbody></tbody></table>
         </div>
       </div>
     </div>

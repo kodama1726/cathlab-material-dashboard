@@ -603,9 +603,216 @@
   }
 
   // ================================================================
+  // TAB 5: デバイス多様性
+  // ================================================================
+  // 方式(タイプ)は品名・規格・材料区分の文字列から判定する。上から順に評価し最初に一致したものを採用。
+  // 自施設で実績のない方式も「実績なし」として表示し、採用状況の全体像を把握できるようにする。
+  const DEVICE_DOMAINS = [
+    { key: 'abl', label: 'アブレーション', procs: ['経皮的カテーテル心筋焼灼術'], groups: [
+      { name: 'アブレーションカテーテル', materials: ['心臓用カテーテル(アブレーション用)'], types: [
+        { label: '高周波(RF)カテーテル', test: /TactiCath|ThermoCool|SmartTouch|FlexAbility|IntellaNav|QDOT|高周波/, desc: '先端電極から高周波通電し点状に焼灼(コンタクトフォースセンサー付き等)' },
+        { label: 'クライオバルーン', test: /クライオ|Arctic|POLARx/i, desc: 'バルーン内で冷凍し肺静脈を一括隔離' },
+        { label: 'ホットバルーン', test: /ホットバルーン|SATAKE/, desc: 'バルーン内の液体を高周波で加温し一括隔離' },
+        { label: 'パルスフィールド(PFA)', test: /パルス|PFA|FARAPULSE|PulseSelect|VARIPULSE|Sphere/i, desc: '高電圧パルスによる不可逆的電気穿孔で心筋選択的に焼灼' }
+      ] },
+      { name: 'マッピング・診断用電極カテーテル', materials: ['心臓用カテーテル(診断用 複数電極)'], types: [
+        { label: '高密度マッピング', test: /Orion|PentaRay|OctaRay|Advisor HD|HD Grid/, desc: '多数の小電極で詳細な電位マップを作成' },
+        { label: '円状(リング)マッピング', test: /Achieve|Lasso|円状/, desc: '肺静脈入口部の電位を円周状に記録' },
+        { label: '多極診断(固定電極)', test: /DecaNav|Inquiry|診断用電極/, desc: '冠静脈洞・右心系などに留置する標準的な電極カテーテル' }
+      ] }
+    ] },
+    { key: 'pci', label: 'PCI', procs: ['PCI（待機的）', 'PCI（緊急）'], groups: [
+      { name: 'PTCAバルーン', materials: ['PTCAダイレーテーションカテーテル（一般型）', 'PTCAダイレーテーションカテーテル（高圧型）'], types: [
+        { label: 'セミコンプライアント', test: /Semi-NC|セミコンプライアント/, desc: '前拡張などに用いる標準的なバルーン' },
+        { label: 'ノンコンプライアント(NC)', test: /NC|高圧/, desc: '高圧でも径が変化しにくく後拡張に用いる' },
+        { label: 'スコアリング/カッティング', test: /スコアリング|カッティング|Scoreflex|Wolverine/i, desc: 'ブレード・ワイヤーで石灰化病変に切れ目を入れる' },
+        { label: '薬剤コーティング(DCB)', test: /薬剤コーティング|DCB|SeQuent|Agent/i, desc: 'ステントを留置せず薬剤を血管壁に塗布する' }
+      ] },
+      { name: '冠動脈イメージング', materials: ['血管内超音波カテーテル', '血管内光干渉断層用カテーテル'], types: [
+        { label: 'IVUS(血管内超音波)', test: /IVUS|超音波/, desc: '超音波で血管壁・プラークを観察' },
+        { label: 'OCT/OFDI(光干渉断層)', test: /OCT|OFDI|光干渉/, desc: '近赤外光で高解像度に観察' }
+      ] },
+      { name: 'デバルキング(石灰化・プラーク切除)', materials: ['アテローム切除用カテーテル', '高速回転式経皮経管アテレクトミーカテーテル'], types: [
+        { label: 'ロータブレーター(高速回転式)', test: /ロータブレーター|Rota/, desc: 'ダイヤモンド粒子付きバーの高速回転で石灰化を切削' },
+        { label: '方向性アテレクトミー(DCA)', test: /ハンター|切削式|DCA/, desc: 'カッターでプラークを切除・回収' },
+        { label: 'オービタル(OAD)', test: /オービタル|Diamondback/i, desc: '偏心クラウンの軌道回転で石灰化を切削' },
+        { label: '血管内砕石術(IVL)', test: /砕石|IVL|Shockwave/i, desc: '音圧波で石灰化を破砕' }
+      ] },
+      { name: 'PTCAガイドワイヤー', materials: ['PTCAガイドワイヤー（標準型）', 'PTCAガイドワイヤー（貫通型）'], types: [
+        { label: '標準型(ワークホース)', test: /標準型/, desc: '一般病変の通過に用いる柔軟なワイヤー' },
+        { label: '貫通型(CTO用)', test: /貫通型/, desc: '慢性完全閉塞などの通過用の硬いワイヤー' }
+      ] },
+      { name: '止血デバイス', materials: ['経皮的血管穿刺部止血材料'], types: [
+        { label: '縫合型', test: /パークローズ|Perclose/, desc: '縫合糸で穿刺部を閉鎖' },
+        { label: 'コラーゲンプラグ型', test: /アンギオシール|Angio-Seal/, desc: 'アンカーとコラーゲンで穿刺部を閉鎖' }
+      ] }
+    ] },
+    { key: 'cied', label: '植込みデバイス(PM/ICD)', procs: ['ペースメーカー移植術', '植込型除細動器移植術'], groups: [
+      { name: 'ペースメーカ本体', materials: ['ペースメーカ'], types: [
+        { label: '経静脈 デュアルチャンバ', test: /デュアル/, desc: '心房・心室の2本のリードを使用' },
+        { label: '経静脈 シングルチャンバ', test: /シングル/, desc: '1本のリードを使用' },
+        { label: 'リードレス', test: /リードレス|Micra|AVEIR/i, desc: '右室内に直接留置するカプセル型' }
+      ] },
+      { name: '植込型除細動器(ICD)本体', materials: ['植込型除細動器'], types: [
+        { label: '皮下植込型(S-ICD)', test: /S-ICD|EMBLEM|皮下/, desc: '経静脈リードを用いず皮下に植込み' },
+        { label: '経静脈 シングルチャンバ', test: /シングル/, desc: '右室リード1本' },
+        { label: '経静脈 デュアルチャンバ', test: /デュアル/, desc: '心房・心室リードを使用' }
+      ] }
+    ] }
+  ];
+  const OTHER_TYPE = { label: '未分類', desc: '分類ルールに一致しなかった製品' };
+
+  const dvDomainSel = document.getElementById('dvDomain');
+  const dvGroupSel = document.getElementById('dvGroup');
+  dvDomainSel.innerHTML = DEVICE_DOMAINS.map(d => `<option value="${d.key}">${d.label}</option>`).join('');
+  function fillGroupOptions() {
+    const dom = DEVICE_DOMAINS.find(d => d.key === dvDomainSel.value);
+    dvGroupSel.innerHTML = dom.groups.map((g, i) => `<option value="${i}">${g.name}</option>`).join('');
+  }
+  fillGroupOptions();
+  dvDomainSel.addEventListener('change', () => { fillGroupOptions(); renderDevice(); });
+  dvGroupSel.addEventListener('change', renderDevice);
+
+  function classifyType(group, r) {
+    const p = D.products[r.code] || { name: '', spec: '' };
+    const text = `${p.name} ${p.spec} ${r.material}`;
+    return group.types.find(t => t.test.test(text)) || OTHER_TYPE;
+  }
+
+  // 群ごとに方式別・製品別の件数を集計
+  function summarizeGroup(group, procs) {
+    const rows = D.rawRows.filter(r => procs.includes(r.procedure) && group.materials.includes(r.material));
+    const types = rows.some(r => classifyType(group, r) === OTHER_TYPE) ? group.types.concat([OTHER_TYPE]) : group.types;
+    const byType = new Map(types.map(t => [t, 0]));
+    const byProduct = new Map();
+    for (const r of rows) {
+      const t = classifyType(group, r);
+      byType.set(t, byType.get(t) + 1);
+      const pr = byProduct.get(r.code) || { code: r.code, type: t, maker: r.maker, price: r.price, count: 0, value: 0 };
+      pr.count++; pr.value += r.price;
+      byProduct.set(r.code, pr);
+    }
+    return { rows, types, byType, products: [...byProduct.values()].sort((a, b) => b.count - a.count) };
+  }
+
+  function typeColor(types, t) {
+    return t === OTHER_TYPE ? colors().muted : colors().series[types.indexOf(t) % colors().series.length];
+  }
+
+  function renderDevice() {
+    applyChartDefaults();
+    const c = colors();
+    const dom = DEVICE_DOMAINS.find(d => d.key === dvDomainSel.value);
+    const gi = +dvGroupSel.value;
+    const group = dom.groups[gi];
+    const sum = summarizeGroup(group, dom.procs);
+    const total = sum.rows.length;
+
+    // KPI
+    const usedTypes = sum.types.filter(t => sum.byType.get(t) > 0 && t !== OTHER_TYPE).length;
+    const makers = new Set(sum.rows.map(r => r.maker)).size;
+    const effective = total ? 1 / sum.products.reduce((s, p) => s + (p.count / total) ** 2, 0) : 0;
+    document.getElementById('dvKpis').innerHTML = [
+      { label: '使用件数', value: fmtNum(total), sub: `${group.name}・全期間` },
+      { label: '採用している方式', value: `${usedTypes} / ${group.types.length}`, sub: '実績のある方式 / 主な方式' },
+      { label: '採用製品数', value: fmtNum(sum.products.length), sub: `メーカー ${makers}社` },
+      { label: '実効製品数', value: effective.toFixed(1), sub: '使用の偏りを考慮した製品の多様性', info: '逆シンプソン指数(1 ÷ 各製品シェアの2乗和)。全製品を均等に使うと採用製品数と一致し、1製品に偏るほど1に近づきます' }
+    ].map(k => `<div class="kpi"><div class="label">${k.label}${k.info ? `<span class="info-dot" title="${k.info}">i</span>` : ''}</div><div class="value">${k.value}</div><div class="sub">${k.sub}</div></div>`).join('');
+
+    // 領域内の全デバイス群の方式構成(行クリックで群を切替)
+    document.getElementById('dvMixSub').textContent = `${dom.label}で使用するデバイス群ごとの方式構成(使用件数ベース)。行をクリックすると下の詳細が切り替わります`;
+    document.getElementById('dvMix').innerHTML = dom.groups.map((g, i) => {
+      const s = summarizeGroup(g, dom.procs);
+      const n = s.rows.length || 1;
+      const segs = s.types.filter(t => s.byType.get(t) > 0).map(t => {
+        const pct = s.byType.get(t) / n * 100;
+        return `<div style="width:${pct}%;background:${typeColor(s.types, t)}" title="${t.label}: ${s.byType.get(t)}件(${pct.toFixed(1)}%)">${pct >= 12 ? pct.toFixed(0) + '%' : ''}</div>`;
+      }).join('');
+      const chips = s.types.map(t => {
+        const v = s.byType.get(t);
+        return v > 0
+          ? `<span class="chip"><span class="dot" style="background:${typeColor(s.types, t)}"></span>${t.label} ${fmtNum(v)}件</span>`
+          : `<span class="chip none" title="${t.desc}"><span class="dot"></span>${t.label}(実績なし)</span>`;
+      }).join('');
+      return `<div class="mix-row ${i === gi ? 'active' : ''}" data-gi="${i}">
+        <div class="mix-name">${g.name}<small>${fmtNum(s.rows.length)}件・${s.products.length}製品</small></div>
+        <div><div class="usetype-bar mix-bar">${segs}</div><div class="chips">${chips}</div></div>
+      </div>`;
+    }).join('');
+
+    // 方式別 使用件数(実績なしの方式も0件として表示)
+    document.getElementById('dvTypeSub').textContent = `${group.name}・使用件数(本数)ベース`;
+    const typeLabels = sum.types.map(t => sum.byType.get(t) > 0 ? t.label : t.label + ' ※実績なし');
+    makeChart('chartDvType', {
+      type: 'bar',
+      data: { labels: typeLabels, datasets: [{ label: '使用件数', data: sum.types.map(t => sum.byType.get(t)), backgroundColor: sum.types.map(t => typeColor(sum.types, t)), borderRadius: 4, borderSkipped: false, barPercentage: 0.6 }] },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: legendOpt(false),
+          tooltip: { ...tooltipOpt(), callbacks: { label: (it) => `${fmtNum(it.raw)}件(${fmtPct(total ? it.raw / total : 0)})`, afterLabel: (it) => sum.types[it.dataIndex].desc } }
+        },
+        scales: { x: { grid: gridOpt(), ticks: { ...tickOpt(), precision: 0 }, beginAtZero: true }, y: { grid: { display: false }, ticks: tickOpt() } }
+      }
+    });
+
+    // 方式別 四半期推移(切替・併用の傾向)
+    const quarterOf = (ym) => ym.slice(0, 4) + 'Q' + Math.ceil(+ym.slice(4, 6) / 3);
+    // データの無い四半期も軸に含め、時間の間隔を正しく表示する
+    const yms = D.overview.monthlyByProc.map(e => e.ym).sort();
+    const quarters = [];
+    for (let y = +yms[0].slice(0, 4), q = Math.ceil(+yms[0].slice(4, 6) / 3); `${y}Q${q}` <= quarterOf(yms[yms.length - 1]); q === 4 ? (y++, q = 1) : q++) quarters.push(`${y}Q${q}`);
+    const qIdx = new Map(quarters.map((q, i) => [q, i]));
+    const usedTypeList = sum.types.filter(t => sum.byType.get(t) > 0);
+    const qData = new Map(usedTypeList.map(t => [t, quarters.map(() => 0)]));
+    for (const r of sum.rows) qData.get(classifyType(group, r))[qIdx.get(quarterOf(r.ym))]++;
+    makeChart('chartDvTrend', {
+      type: 'bar',
+      data: {
+        labels: quarters,
+        datasets: usedTypeList.map(t => ({ label: t.label, data: qData.get(t), backgroundColor: typeColor(sum.types, t), borderColor: c.surface, borderWidth: 1, stack: 'q' }))
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: legendOpt(true), tooltip: { ...tooltipOpt(), mode: 'index', intersect: false } },
+        interaction: { mode: 'index', intersect: false },
+        scales: { x: { stacked: true, grid: { display: false }, ticks: { ...tickOpt(), maxRotation: 0, autoSkip: true } }, y: { stacked: true, grid: gridOpt(), ticks: { ...tickOpt(), precision: 0 }, beginAtZero: true } }
+      }
+    });
+
+    // 製品一覧(方式順・件数順)。実績のない方式は参考行として末尾に表示
+    document.getElementById('dvTableSub').textContent = `${group.name}・${dom.procs.map(shortProc).join(' / ')}・全期間`;
+    const thead = ['方式', '品名', '規格', 'メーカー', '使用件数', '群内シェア', '償還価格', '償還額合計'];
+    document.getElementById('dvTable').querySelector('thead').innerHTML = '<tr>' + thead.map(h => `<th>${h}</th>`).join('') + '</tr>';
+    const prodRows = [...sum.products].sort((a, b) => sum.types.indexOf(a.type) - sum.types.indexOf(b.type) || b.count - a.count).map(p => {
+      const pd = D.products[p.code];
+      const share = total ? p.count / total : 0;
+      return `<tr>
+        <td title="${p.type.desc}"><span class="chip"><span class="dot" style="background:${typeColor(sum.types, p.type)}"></span>${p.type.label}</span></td>
+        <td>${pd.name}</td><td>${pd.spec}</td><td>${p.maker}</td>
+        <td>${fmtNum(p.count)}</td>
+        <td><span class="fill-bar"><span style="width:${share * 100}%;background:${typeColor(sum.types, p.type)}"></span></span>${fmtPct(share)}</td>
+        <td>${fmtYen(p.price)}</td><td>${fmtYen(p.value)}</td>
+      </tr>`;
+    });
+    const noneRows = sum.types.filter(t => sum.byType.get(t) === 0).map(t => `<tr style="color:var(--muted)">
+        <td><span class="chip none"><span class="dot"></span>${t.label}</span></td>
+        <td colspan="7">自施設での使用実績なし — ${t.desc}</td>
+      </tr>`);
+    document.getElementById('dvTable').querySelector('tbody').innerHTML = prodRows.concat(noneRows).join('');
+  }
+
+  document.getElementById('dvMix').addEventListener('click', (e) => {
+    const row = e.target.closest('.mix-row');
+    if (!row) return;
+    dvGroupSel.value = row.dataset.gi;
+    renderDevice();
+  });
+
+  // ================================================================
   // タブ切替
   // ================================================================
-  const RENDERERS = { overview: renderOverview, benchmark: renderBenchmark, dealer: renderDealer, inventory: renderInventory };
+  const RENDERERS = { overview: renderOverview, benchmark: renderBenchmark, dealer: renderDealer, inventory: renderInventory, device: renderDevice };
   let activeTab = 'overview';
   function renderActiveTab() { RENDERERS[activeTab](); }
 
