@@ -76,13 +76,13 @@ D.benchmark.deviceProfiles = {
 // 指標キーは app.js の USAGE_INDICATORS と対応。
 D.benchmark.usageProfiles = {
   // 大学病院: 複雑病変・研究症例が多く、イメージング・デバルキング・ICEの使用が多い
-  B: { adoptionLag: -1, mult: { stents: 1.05, balloons: 1.15, guidewires: 1.25, imaging: 1.05, closure: 1.6, debulking: 1.8, touchup: 1.3, hdMapping: 1.15, ice: 1.6, diagCath: 0.95, pmLeads: 0.95, icdLeads: 0.9 } },
+  B: { adoptionLag: -1, mult: { stents: 1.05, balloons: 1.15, guidewires: 1.25, imaging: 1.05, closure: 1.6, debulking: 1.8, touchup: 1.3, hdMapping: 1.15, ice: 1.6, diagCath: 0.95, pmLeads: 0.95, icdLeads: 0.9, discardsPci: 1.1, discardsDevice: 1.0 } },
   // 地域医療支援病院: 標準的な手技が中心。大腿動脈アプローチがやや多く止血デバイスを使う
-  C: { adoptionLag: 1, mult: { stents: 1.02, balloons: 1.05, guidewires: 0.9, imaging: 0.9, closure: 1.3, debulking: 0.6, touchup: 0.7, hdMapping: 0.75, ice: 0.6, diagCath: 0.9, pmLeads: 1.02, icdLeads: 1.0 } },
+  C: { adoptionLag: 1, mult: { stents: 1.02, balloons: 1.05, guidewires: 0.9, imaging: 0.9, closure: 1.3, debulking: 0.6, touchup: 0.7, hdMapping: 0.75, ice: 0.6, diagCath: 0.9, pmLeads: 1.02, icdLeads: 1.0, discardsPci: 0.9, discardsDevice: 0.9 } },
   // 心臓血管センター: CTO・石灰化病変が多く、ワイヤー・バルーン・デバルキングの使用が多い。PFA中心でマッピングは少なめ
-  D: { adoptionLag: -2, mult: { stents: 1.12, balloons: 1.25, guidewires: 1.4, imaging: 1.05, closure: 1.4, debulking: 2.2, touchup: 1.1, hdMapping: 0.8, ice: 1.3, diagCath: 0.85, pmLeads: 0.92, icdLeads: 0.95 } },
+  D: { adoptionLag: -2, mult: { stents: 1.12, balloons: 1.25, guidewires: 1.4, imaging: 1.05, closure: 1.4, debulking: 2.2, touchup: 1.1, hdMapping: 0.8, ice: 1.3, diagCath: 0.85, pmLeads: 0.92, icdLeads: 0.95, discardsPci: 1.2, discardsDevice: 1.1 } },
   // 一般病院: 材料を絞った運用、イメージング・止血デバイス・ICEの使用が少ない
-  E: { adoptionLag: 2, mult: { stents: 0.95, balloons: 0.98, guidewires: 0.85, imaging: 0.8, closure: 0.7, debulking: 0.3, touchup: 0.5, hdMapping: 0.6, ice: 0.3, diagCath: 1.1, pmLeads: 1.05, icdLeads: 1.05 } }
+  E: { adoptionLag: 2, mult: { stents: 0.95, balloons: 0.98, guidewires: 0.85, imaging: 0.8, closure: 0.7, debulking: 0.3, touchup: 0.5, hdMapping: 0.6, ice: 0.3, diagCath: 1.1, pmLeads: 1.05, icdLeads: 1.05, discardsPci: 0.8, discardsDevice: 0.8 } }
 };
 
 fs.writeFileSync(dataPath, PREFIX + JSON.stringify(D) + ';');

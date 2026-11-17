@@ -914,9 +914,12 @@
     { key: 'ice', procs: [ABL_PROC], label: '心腔内エコー(ICE)使用率', kind: 'rate', match: inMaterials('血管内超音波カテーテル') },
     { key: 'diagCath', procs: [ABL_PROC], label: '診断用電極カテーテル本数', kind: 'count', match: inMaterials('心臓用カテーテル(診断用 複数電極)') },
     { key: 'pmLeads', procs: ['ペースメーカー移植術'], label: 'リード本数', kind: 'count', match: inMaterials('ペースメーカ用リード') },
-    { key: 'icdLeads', procs: ['植込型除細動器移植術'], label: 'リード・電極本数', kind: 'count', match: (r) => /リード/.test(r.material) }
+    { key: 'icdLeads', procs: ['植込型除細動器移植術'], label: 'リード・電極本数', kind: 'count', match: (r) => /リード/.test(r.material) },
+    { key: 'discardsPci', procs: PCI_PROCS, area: '破棄・破損', label: 'PCI: 償還対象材料の破棄・破損本数', kind: 'count', match: (r) => r.useType === '破棄破損' && r.price > 0 },
+    { key: 'discardsDevice', procs: ['ペースメーカー移植術', '植込型除細動器移植術', '両心室ペースメーカー移植術'], area: '破棄・破損', label: '植込みデバイス: 償還対象材料の破棄・破損本数', kind: 'count', match: (r) => r.useType === '破棄破損' && r.price > 0 }
   ];
   const caseKey = (r) => r.date + '|' + r.procedure + '|' + (r.cid || '');
+  const indGroup = (ind) => ind.area || (ind.procs === PCI_PROCS ? 'PCI' : shortProc(ind.procs[0]));
 
   // A病院の実績値(対象年)。症例が無ければ null
   function ownUsage(ind) {
@@ -948,7 +951,7 @@
       const peers = vals.slice(1).sort((a, b) => a - b);
       const median = (peers[1] + peers[2]) / 2;
       const diff = median ? (vals[0] - median) / median : 0;
-      const group = ind.procs === PCI_PROCS ? 'PCI' : shortProc(ind.procs[0]);
+      const group = indGroup(ind);
       const groupCell = group === prevGroup ? '' : group;
       prevGroup = group;
       const cells = vals.map((v, i) => {
@@ -1240,11 +1243,15 @@
       return { p, n: cs.length, annualN: annual(cs.length), annualTotal: annual(total), avg: vals[0], peerMed, diff: (vals[0] - peerMed) / peerMed, rank, z, prev };
     });
 
-    // ---- 全処置の1症例あたり ----
-    const allVals = FAC_KEYS.map(k => facMetric(k, 'all').avgReimburse);
-    const allPeerMed = median(allVals.slice(1));
+    // ---- 全処置の1症例あたり(A病院の症例構成で標準化) ----
+    // 比較基準 = 処置ごとの他4施設中央値の単価 × A病院の処置別症例数(=他施設並みだった場合の期待値)
+    // 順位 = 各施設の処置別単価をA病院の処置別症例数で加重した値の5施設内順位
+    const nA = procRows.reduce((s, r) => s + r.n, 0);
+    const allVals = FAC_KEYS.map(k => procs.reduce((s, p, i) => s + procRows[i].n * facMetric(k, p).avgReimburse, 0) / nA);
+    const allPeerMed = procRows.reduce((s, r) => s + r.n * r.peerMed, 0) / nA;
     const allDiff = (allVals[0] - allPeerMed) / allPeerMed;
     const allRank = [...allVals].sort((a, b) => a - b).indexOf(allVals[0]) + 1;
+    const excessCost = annual((allVals[0] - allPeerMed) * nA);
 
     // ---- 材料区分別のパレート ----
     const byCat = new Map();
@@ -1280,7 +1287,10 @@
       const perUse = ind.kind === 'count' ? 1 : (matched.length / Math.max(1, new Set(matched.map(caseKey)).size));
       return { ind, a: vals[0], med, diff, value: Math.max(0, vals[0] - med) * nAnnual * unit * perUse };
     });
-    const overUse = usageGaps.filter(g => g.diff > 0.05).sort((a, b) => b.value - a.value);
+    const overUse = usageGaps.filter(g => g.diff > 0.05 && g.ind.area !== '破棄・破損').sort((a, b) => b.value - a.value);
+    const discardGaps = usageGaps.filter(g => g.ind.area === '破棄・破損' && g.med > 0);
+    const discardTxt = discardGaps.map(g => `${g.ind.label.split(':')[0]} ${(g.a / g.med).toFixed(1)}倍`).join('・');
+    const discardHigh = discardGaps.some(g => g.diff > 0.2);
 
     // ---- 新しい方式の導入状況 ----
     const adoption = [
@@ -1298,11 +1308,14 @@
     const costLevel = allDiff > 0.05 ? 'warning' : allDiff < -0.05 ? 'good' : 'good';
     const kpis = [
       { label: '材料償還額(年間)', value: fmtMan(annual(totalReimb)), sub: `${scopeLabel}・${fmtNum(annual(CASES.length))}症例/年`, badge: '' },
-      { label: '1症例あたり材料償還額', value: fmtYen(allVals[0]), sub: `他4施設中央値 ${fmtYen(allPeerMed)}・5施設中${allRank}位(低い順)`,
-        badge: statusBadge(costLevel, Math.abs(allDiff) <= 0.05 ? '同水準' : `中央値比 ${allDiff > 0 ? '+' : ''}${(allDiff * 100).toFixed(0)}%`),
-        info: '全処置の加重平均。処置構成の違いを揃えるため、B〜E病院はA病院の処置別症例数の年次変動を同率で反映しています' },
+      { label: '1症例あたり材料償還額(症例構成調整)', value: fmtYen(allVals[0]), sub: `他施設並みの場合 ${fmtYen(allPeerMed)}・5施設中${allRank}位(低い順)`,
+        badge: statusBadge(costLevel, Math.abs(allDiff) <= 0.05 ? '同水準' : `他施設比 ${allDiff > 0 ? '+' : ''}${(allDiff * 100).toFixed(1)}%`),
+        info: '症例構成を揃えた比較(間接標準化)。「他施設並みの場合」= 処置ごとの他4施設中央値の単価 × A病院の処置別症例数。順位は各施設の処置別単価をA病院の症例構成で加重した値で比較' },
+      { label: '他施設並みとの差額(年間)', value: `${excessCost >= 0 ? '+' : '−'}${fmtMan(Math.abs(excessCost))}`, sub: '症例構成を揃えて他施設中央値の単価で試算した場合との差',
+        badge: statusBadge(excessCost > annual(totalReimb) * 0.05 ? 'critical' : excessCost > 0 ? 'warning' : 'good', excessCost > 0 ? '超過コスト' : '他施設より低い'),
+        info: '償還額ベース。償還対象材料のため収益も連動しますが、破棄・破損分は請求できず全額が病院負担です' },
       { label: '破棄・破損による損失(年間)', value: fmtMan(annual(discardValue)), sub: `償還対象材料 ${fmtNum(annual(discards.length))}件/年・請求できず病院負担`,
-        badge: statusBadge(annual(discardValue) > 1e6 ? 'warning' : 'good', annual(discardValue) > 1e6 ? '要対策' : '小さい') },
+        badge: statusBadge(discardHigh ? 'critical' : annual(discardValue) > 1e6 ? 'warning' : 'good', discardTxt ? `他施設中央値比 ${discardTxt}` : (annual(discardValue) > 1e6 ? '要対策' : '小さい')) },
       { label: '買取在庫(資金拘束)', value: fmtMan(purchaseStock), sub: `現時点・欠品リスク ${riskItems.length}品目`,
         badge: statusBadge(riskItems.length ? 'warning' : 'good', riskItems.length ? '定数見直し' : '良好') }
     ];
@@ -1377,8 +1390,10 @@
     const highProcs = procRows.filter(r => r.z > 1.96);
     const lines = [
       Math.abs(allDiff) <= 0.05
-        ? `1症例あたり材料償還額は ${fmtYen(allVals[0])} で、他施設中央値と<b>同水準</b>(5施設中${allRank}位)。${highProcs.length ? `ただし<b>${highProcs.map(r => shortProc(r.p)).join('・')}</b>は統計的に高く、要因分析が必要です。` : '処置別にも統計的に突出した処置はありません。'}`
-        : `1症例あたり材料償還額は ${fmtYen(allVals[0])} で、他施設中央値より<b>${allDiff > 0 ? '高い' : '低い'}(${allDiff > 0 ? '+' : ''}${(allDiff * 100).toFixed(0)}%)</b>(5施設中${allRank}位)。${highProcs.length ? `${allDiff > 0 ? '特に' : '一方で'}<b>${highProcs.map(r => shortProc(r.p)).join('・')}</b>は統計的に高い水準で、要因分析が必要です。` : ''}`,
+        ? `1症例あたり材料償還額は ${fmtYen(allVals[0])} で、症例構成を揃えると他施設中央値と<b>同水準</b>(5施設中${allRank}位)。${highProcs.length ? `ただし<b>${highProcs.map(r => shortProc(r.p)).join('・')}</b>は統計的に高く、要因分析が必要です。` : '処置別にも統計的に突出した処置はありません。'}`
+        : allDiff > 0
+          ? `1症例あたり材料償還額は ${fmtYen(allVals[0])} で、症例構成を揃えると他施設並みの場合より<b>+${(allDiff * 100).toFixed(1)}%高く、年${fmtMan(excessCost)}の超過</b>(5施設中${allRank}位)。${highProcs.length ? `<b>${highProcs.map(r => shortProc(r.p)).join('・')}</b>が統計的に高く、` : ''}要因は${overUse.length ? `<b>${overUse.slice(0, 3).map(g => `${indGroup(g.ind)}の${g.ind.label.replace(/本数|使用率/, '')}`).join('、')}の使用量が多い</b>こと` : '材料使用量'}${discardTxt ? `と、<b>償還対象材料の破棄・破損が多い</b>こと(1症例あたり他施設の${discardTxt})` : ''}です。`
+          : `1症例あたり材料償還額は ${fmtYen(allVals[0])} で、症例構成を揃えると他施設並みの場合より<b>低い(${(allDiff * 100).toFixed(1)}%)</b>(5施設中${allRank}位)。${highProcs.length ? `一方で<b>${highProcs.map(r => shortProc(r.p)).join('・')}</b>は統計的に高い水準で、要因分析が必要です。` : ''}`,
       deviceCases.length
         ? `植込みデバイス(PM・ICD・CRT)は症例の<b>${fmtPct(deviceShareCases, 0)}</b>で材料償還額の<b>${fmtPct(deviceShareValue, 0)}</b>を占めます。上位${top80}区分で償還額の80%に達するため、<b>価格交渉はこれらに集中</b>するのが効率的です。`
         : `上位${top80}区分で材料償還額の80%に達するため、<b>価格交渉はこれらに集中</b>するのが効率的です。`,
@@ -1390,7 +1405,7 @@
     const decisions = [];
     highProcs.forEach(r => decisions.push({ level: 'critical', area: '診療・コスト', text: `${shortProc(r.p)}の1症例あたり材料費が他施設比で統計的に高い(中央値比${r.diff > 0 ? '+' : ''}${(r.diff * 100).toFixed(0)}%)。材料使用量の要因分析を診療科と協議することの承認` }));
     decisions.push({ level: 'warning', area: '購買', text: `上位${top80}区分(${pareto.slice(0, Math.min(3, top80)).map(x => x.name.replace(/[（(].*$/, '')).join('、')}等、年${fmtMan(annual(top80Value))})に絞った価格交渉・品目集約の方針承認` });
-    if (annual(discardValue) > 1e6) decisions.push({ level: 'warning', area: '医療安全・コスト', text: `高額品の開封前確認(ダブルチェック)手順の導入。破棄・破損損失 年${fmtMan(annual(discardValue))}` });
+    if (annual(discardValue) > 1e6) decisions.push({ level: discardHigh ? 'critical' : 'warning', area: '医療安全・コスト', text: `高額品の開封前確認(サイズ・術者確認のダブルチェック)手順の導入。破棄・破損損失 年${fmtMan(annual(discardValue))}${discardTxt ? `(1症例あたり破棄本数は他施設中央値の ${discardTxt})` : ''}。上位: ${discardTop.join('、')}` });
     adoption.filter(x => x.a < x.med * 0.9).forEach(x => decisions.push({ level: 'warning', area: '投資・新技術', text: `${x.label}の比率が他施設中央値を下回る(A病院 ${(x.a * 100).toFixed(0)}% / 中央値 ${(x.med * 100).toFixed(0)}%)。導入・拡大計画(対象患者数・収支・教育体制)の検討` }));
     adoption.filter(x => x.t === 'パルスフィールド(PFA)' && x.a >= x.med * 0.9).forEach(() => decisions.push({ level: 'good', area: '在庫', text: 'PFAへの移行が進行中。クライオ関連品の定数削減・PFA関連品の定数設定(実施状況の確認)' }));
     if (riskItems.length) decisions.push({ level: 'warning', area: '在庫', text: `欠品リスク${riskItems.length}品目(${riskItems.slice(0, 3).map(i => i.name).join('、')})の定数見直し` });

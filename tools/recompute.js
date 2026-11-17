@@ -17,7 +17,9 @@ function countBy(arr, key) {
   return [...m].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
 }
 
-function recompute(D) {
+// opts.anchorPeers=true のときは施設B〜Eの処置別統計を変更しない(A病院だけが変化するシナリオ用)。
+// 画面側は「B〜E値 ÷ 保存されたA病院値 × 対象年のA病院値」で算出するため、全期間ではB〜Eの絶対値が維持される。
+function recompute(D, opts = {}) {
   const rows = D.rawRows;
   const PROCS = D.benchmark.procedures;
 
@@ -67,7 +69,7 @@ function recompute(D) {
     const avgReimburse = cs.reduce((s, c) => s + c.reimburse, 0) / cs.length;
     facA.procStats[p] = { nCases, avgItems, avgReimburse, totalReimburse: avgReimburse * nCases };
   }
-  for (const k of ['B', 'C', 'D', 'E']) {
+  for (const k of opts.anchorPeers ? [] : ['B', 'C', 'D', 'E']) {
     const f = D.benchmark.facilities[k];
     for (const p of PROCS) {
       const s = f.procStats[p];
