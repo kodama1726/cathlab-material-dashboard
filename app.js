@@ -97,30 +97,66 @@
     return [...m.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
   }
 
+  // ---------------- 対象年(全タブ共通、在庫情報は対象外) ----------------
+  const yearSel = document.getElementById('yearSel');
+  const YEARS = [...new Set(D.cases.map(c => c.date.slice(0, 4)))].sort();
+  yearSel.innerHTML = '<option value="all">全期間</option>' + YEARS.map(y => `<option value="${y}">${y}年</option>`).join('');
+  let ROWS = D.rawRows, CASES = D.cases, MONTHLY = D.overview.monthlyByProc;
+  function applyYear() {
+    const y = yearSel.value;
+    ROWS = y === 'all' ? D.rawRows : D.rawRows.filter(r => r.date.startsWith(y));
+    CASES = y === 'all' ? D.cases : D.cases.filter(c => c.date.startsWith(y));
+    MONTHLY = y === 'all' ? D.overview.monthlyByProc : D.overview.monthlyByProc.filter(e => e.ym.startsWith(y));
+    const procsInYear = new Set(CASES.map(c => c.procedure));
+    fillProcSelect(ovProcSel, 'すべて', procsInYear);
+    fillProcSelect(bmProcSel, 'すべて(全処置加重平均)', procsInYear);
+    fillProcSelect(dmProcSel, 'すべて', procsInYear);
+    const missing = PROC_ORDER.filter(p => !procsInYear.has(p)).map(shortProc);
+    document.getElementById('yearHint').textContent = missing.length ? `${periodLabel()}は ${missing.join('・')} のデータがありません` : '';
+    document.getElementById('ovPeriodHint').textContent = `対象期間: ${periodLabel()}(${fmtNum(ROWS.length)}件)`;
+    document.getElementById('footPeriod').textContent = periodLabel();
+  }
+  // 選択中の年にデータのある処置のみ選択肢に出す(選択中の処置が無ければ「すべて」に戻す)
+  function fillProcSelect(sel, allLabel, procs) {
+    const cur = sel.value;
+    const list = PROC_ORDER.filter(p => procs.has(p));
+    sel.innerHTML = `<option value="all">${allLabel}</option>` + list.map(p => `<option value="${p}">${shortProc(p)}</option>`).join('');
+    sel.value = list.includes(cur) ? cur : 'all';
+  }
+  function periodLabel() {
+    return yearSel.value === 'all' ? `${D.meta.dateFrom} 〜 ${D.meta.dateTo}` : `${yearSel.value}年`;
+  }
+  // 年換算用の期間(年)。年指定時はデータセットの対象期間と重なる日数で換算
+  function periodYears() {
+    if (yearSel.value === 'all') return D.meta.spanDays / 365;
+    const y = +yearSel.value;
+    const from = Math.max(new Date(y, 0, 1), new Date(D.meta.dateFrom + 'T00:00:00'));
+    const to = Math.min(new Date(y, 11, 31), new Date(D.meta.dateTo + 'T00:00:00'));
+    return ((to - from) / 86400000 + 1) / 365;
+  }
+  yearSel.addEventListener('change', () => { applyYear(); renderActiveTab(); });
+
   // ================================================================
   // TAB 1: データ概観
   // ================================================================
   const ovProcSel = document.getElementById('ovProc');
-  ovProcSel.innerHTML = '<option value="all">すべて</option>' + PROC_ORDER.map(p => `<option value="${p}">${shortProc(p)}</option>`).join('');
   ovProcSel.addEventListener('change', renderOverview);
 
-  document.getElementById('ovPeriodHint').textContent = `対象期間: ${D.meta.dateFrom} 〜 ${D.meta.dateTo}(${D.meta.totalRows.toLocaleString()}件)`;
-  document.getElementById('footPeriod').textContent = `${D.meta.dateFrom} 〜 ${D.meta.dateTo}`;
   document.getElementById('footGenerated').textContent = new Date(D.meta.generatedAt).toLocaleString('ja-JP');
 
   function renderOverview() {
     applyChartDefaults();
     const c = colors();
     const proc = ovProcSel.value;
-    const rows = proc === 'all' ? D.rawRows : D.rawRows.filter(r => r.procedure === proc);
-    const cases = proc === 'all' ? D.cases : D.cases.filter(cs => cs.procedure === proc);
+    const rows = proc === 'all' ? ROWS : ROWS.filter(r => r.procedure === proc);
+    const cases = proc === 'all' ? CASES : CASES.filter(cs => cs.procedure === proc);
 
     // KPI
     const totalReimburse = rows.reduce((s, r) => s + r.price, 0);
     const deptRatio = rows.length ? rows.filter(r => r.dept === '循環器内科').length / rows.length : 0;
     const kpis = [
       { label: '対象レコード数', value: fmtNum(rows.length), sub: proc === 'all' ? '全処置合計' : shortProc(proc) },
-      { label: '推定症例数', value: fmtNum(cases.length), sub: '日付×処置内容から推定', info: '症例日と処置内容の組み合わせを1症例相当として簡易推定した参考値です(患者単位の識別IDがないため)' },
+      { label: '推定症例数', value: fmtNum(cases.length), sub: '日付×処置内容から推定', info: '症例日と処置内容の組み合わせを1症例相当として推定した参考値です。2025年のPCI・植込みデバイスは症例番号により患者単位で集計しています' },
       { label: '総材料償還額', value: fmtYen(totalReimburse), sub: '対象期間合計' },
       { label: '循環器内科の割合', value: fmtPct(deptRatio), sub: '診療科内訳' }
     ];
@@ -129,7 +165,7 @@
       <div class="value">${k.value}</div><div class="sub">${k.sub}</div></div>`).join('');
 
     // 処置内訳(全体・フィルタの影響を受けない)
-    const procAll = countBy(D.cases, 'procedure').sort((a, b) => PROC_ORDER.indexOf(a.name) - PROC_ORDER.indexOf(b.name));
+    const procAll = countBy(CASES, 'procedure').sort((a, b) => PROC_ORDER.indexOf(a.name) - PROC_ORDER.indexOf(b.name));
     makeChart('chartProcBreakdown', {
       type: 'bar',
       data: {
@@ -145,7 +181,7 @@
 
     // 月別推移
     document.getElementById('ovTrendSub').textContent = proc === 'all' ? '全処置合計の推定症例数' : shortProc(proc) + 'の推定症例数';
-    const monthly = D.overview.monthlyByProc.map(e => ({ ym: e.ym, v: proc === 'all' ? e._total : (e[proc] || 0) }));
+    const monthly = MONTHLY.map(e => ({ ym: e.ym, v: proc === 'all' ? e._total : (e[proc] || 0) }));
     makeChart('chartMonthlyTrend', {
       type: 'line',
       data: {
@@ -212,7 +248,6 @@
   // TAB 2: 他施設ベンチマーク
   // ================================================================
   const bmProcSel = document.getElementById('bmProc');
-  bmProcSel.innerHTML = '<option value="all">すべて(全処置加重平均)</option>' + PROC_ORDER.map(p => `<option value="${p}">${shortProc(p)}</option>`).join('');
   bmProcSel.addEventListener('change', renderBenchmark);
 
   const FAC_KEYS = ['A', 'B', 'C', 'D', 'E'];
@@ -227,22 +262,40 @@
     const dom = DEVICE_DOMAINS.find(d => d.key === 'abl');
     const g = dom.groups[0];
     const s = summarizeGroup(g, dom.procs);
-    const perCase = s.rows.length / D.cases.filter(c => c.procedure === ABL_PROC).length;
+    const perCase = s.rows.length / CASES.filter(c => c.procedure === ABL_PROC).length;
     const typePrice = s.types.map(t => {
       const rs = s.rows.filter(r => classifyType(g, r) === t);
       return rs.length ? rs.reduce((a, r) => a + r.price, 0) / rs.length : 0;
     });
     const meanPrice = (shares) => shares.reduce((a, sh, i) => a + sh * typePrice[i], 0);
-    const otherCost = D.benchmark.facilities.A.procStats[ABL_PROC].avgReimburse - perCase * meanPrice(facilityDeviceStats('A', dom, g).shares);
+    const otherCost = ownProcStat(ABL_PROC).avgReimburse - perCase * meanPrice(facilityDeviceStats('A', dom, g).shares);
     const catheterCost = perCase * meanPrice(facilityDeviceStats(k, dom, g).shares);
     return { avgReimburse: otherCost + catheterCost, catheterCost, otherCost, perCase };
   }
 
+  // A病院の処置別統計(選択中の対象年で集計)。データが無ければ null
+  function ownProcStat(p) {
+    const cs = CASES.filter(c => c.procedure === p);
+    if (!cs.length) return null;
+    const nCases = cs.length / periodYears();
+    const avgItems = cs.reduce((s, c) => s + c.items, 0) / cs.length;
+    const avgReimburse = cs.reduce((s, c) => s + c.reimburse, 0) / cs.length;
+    return { nCases, avgItems, avgReimburse, totalReimburse: avgReimburse * nCases };
+  }
+
+  // B〜E病院は、全期間のA病院に対する比率を対象年のA病院に適用する。
+  // 症例数もA病院の年次変動(対象年÷全期間)を同率で反映し、全処置加重平均の処置構成を揃える。
+  // A病院にデータが無い処置は全施設で比較対象外(null)
   function procStat(k, p) {
+    const own = ownProcStat(p);
+    if (!own) return null;
+    if (k === 'A') return own;
     const s = D.benchmark.facilities[k].procStats[p];
-    if (k === 'A' || p !== ABL_PROC) return s;
-    const avgReimburse = ablationCostModel(k).avgReimburse;
-    return { ...s, avgReimburse, totalReimburse: avgReimburse * s.nCases };
+    const baseA = D.benchmark.facilities.A.procStats[p];
+    const nCases = s.nCases * own.nCases / baseA.nCases;
+    const avgItems = s.avgItems / baseA.avgItems * own.avgItems;
+    const avgReimburse = p === ABL_PROC ? ablationCostModel(k).avgReimburse : s.avgReimburse / baseA.avgReimburse * own.avgReimburse;
+    return { nCases, avgItems, avgReimburse, totalReimburse: avgReimburse * nCases };
   }
 
   function facMetric(k, proc) {
@@ -250,6 +303,7 @@
       let n = 0, itemsW = 0, reimburse = 0;
       for (const p of D.benchmark.procedures) {
         const s = procStat(k, p);
+        if (!s) continue;
         n += s.nCases; itemsW += s.avgItems * s.nCases; reimburse += s.totalReimburse;
       }
       return { nCases: n, avgItems: n ? itemsW / n : 0, avgReimburse: n ? reimburse / n : 0 };
@@ -321,9 +375,11 @@
     const proc = bmProcSel.value;
     renderProfiles();
 
-    document.getElementById('bmSub1').textContent = (proc === 'all' ? '全処置の加重平均' : shortProc(proc)) + 'で比較'
+    const scope = `${periodLabel()}・${proc === 'all' ? '全処置の加重平均' : shortProc(proc)}で比較`;
+    document.getElementById('bmSub1').textContent = scope
       + (proc === ABL_PROC || proc === 'all' ? '(アブレーションのB〜E病院はカテーテル方式構成から算出)' : '');
-    document.getElementById('bmSub2').textContent = (proc === 'all' ? '全処置の加重平均' : shortProc(proc)) + 'で比較';
+    document.getElementById('bmSub2').textContent = scope;
+    document.getElementById('bmDevMixSub').textContent = `施設別の方式構成比(使用件数ベース・${periodLabel()})。ホバーで採用製品数を表示`;
 
     const metrics = FAC_KEYS.map(k => ({ k, ...facMetric(k, proc) }));
     const facColors = FAC_KEYS.map(k => c.series[FAC_COLOR_IDX[k]]);
@@ -424,7 +480,6 @@
   // TAB 3: ディーラー・メーカー市場戦略
   // ================================================================
   const dmProcSel = document.getElementById('dmProc');
-  dmProcSel.innerHTML = '<option value="all">すべて</option>' + PROC_ORDER.map(p => `<option value="${p}">${shortProc(p)}</option>`).join('');
   dmProcSel.addEventListener('change', renderDealer);
 
   function computeCategoryConcentration(rows) {
@@ -447,9 +502,9 @@
     const c = colors();
     const proc = dmProcSel.value;
     const procLabel = proc === 'all' ? '全処置' : shortProc(proc);
-    const rows = proc === 'all' ? D.rawRows : D.rawRows.filter(r => r.procedure === proc);
+    const rows = proc === 'all' ? ROWS : ROWS.filter(r => r.procedure === proc);
 
-    document.getElementById('dmSubShare').textContent = `材料償還額ベース・全期間・${procLabel}`;
+    document.getElementById('dmSubShare').textContent = `材料償還額ベース・${periodLabel()}・${procLabel}`;
     document.getElementById('dmSubTrend').textContent = `上位6社・材料償還額ベース(自施設実績・${procLabel})`;
     document.getElementById('dmSubHHI').textContent = `自施設データ(${procLabel})における、特定保険医療材料カテゴリ別のメーカー集中度(ハーフィンダール・ハーシュマン指数)。専用カテーテル・リード類は院内で銘柄統一されやすく、単独メーカー(HHI=10,000)になりやすい点に留意`;
 
@@ -472,7 +527,7 @@
       { label: '取扱メーカー数', value: fmtNum(uniqMakerCount), sub: `自施設実績・${procLabel}` },
       { label: '上位3社シェア', value: fmtPct(top3Share), sub: '材料償還額ベース' },
       { label: '寡占カテゴリ数', value: fmtNum(oligopolyCount) + ' / ' + fmtNum(categoryConcentration.length), sub: 'HHI > 2500の材料カテゴリ' },
-      { label: '総市場規模(自施設)', value: fmtYen(totalValue), sub: `材料償還額 全期間合計・${procLabel}` }
+      { label: '総市場規模(自施設)', value: fmtYen(totalValue), sub: `材料償還額合計・${periodLabel()}・${procLabel}` }
     ].map(k => `<div class="kpi"><div class="label">${k.label}</div><div class="value">${k.value}</div><div class="sub">${k.sub}</div></div>`).join('');
 
     makeChart('chartMakerShare', {
@@ -489,7 +544,7 @@
 
     // 月別トレンド(選択中の処置内容における上位6社)
     const dynTopMakers = sortedMakers.slice(0, 6).map(m => m[0]);
-    const monthsList = D.overview.monthlyByProc.map(e => e.ym);
+    const monthsList = MONTHLY.map(e => e.ym);
     const monthlyMap = new Map(monthsList.map(ym => [ym, Object.fromEntries(dynTopMakers.map(m => [m, 0]))]));
     for (const r of rows) { if (dynTopMakers.includes(r.maker)) monthlyMap.get(r.ym)[r.maker] += r.price; }
     const makerMonthly = monthsList.map(ym => ({ ym, ...monthlyMap.get(ym) }));
@@ -717,7 +772,7 @@
 
   // 群ごとに方式別・製品別の件数を集計
   function summarizeGroup(group, procs) {
-    const rows = D.rawRows.filter(r => procs.includes(r.procedure) && group.materials.includes(r.material));
+    const rows = ROWS.filter(r => procs.includes(r.procedure) && group.materials.includes(r.material));
     const types = rows.some(r => classifyType(group, r) === OTHER_TYPE) ? group.types.concat([OTHER_TYPE]) : group.types;
     const byType = new Map(types.map(t => [t, 0]));
     const byProduct = new Map();
@@ -845,7 +900,7 @@
     const makers = new Set(sum.rows.map(r => r.maker)).size;
     const effective = total ? 1 / sum.products.reduce((s, p) => s + (p.count / total) ** 2, 0) : 0;
     document.getElementById('dvKpis').innerHTML = [
-      { label: '使用件数', value: fmtNum(total), sub: `${group.name}・全期間` },
+      { label: '使用件数', value: fmtNum(total), sub: `${group.name}・${periodLabel()}` },
       { label: '採用している方式', value: `${usedTypes} / ${group.types.length}`, sub: '実績のある方式 / 主な方式' },
       { label: '採用製品数', value: fmtNum(sum.products.length), sub: `メーカー ${makers}社` },
       { label: '実効製品数', value: effective.toFixed(1), sub: '使用の偏りを考慮した製品の多様性', info: '逆シンプソン指数(1 ÷ 各製品シェアの2乗和)。全製品を均等に使うと採用製品数と一致し、1製品に偏るほど1に近づきます' }
@@ -891,7 +946,7 @@
     // 方式別 四半期推移(切替・併用の傾向)
     const quarterOf = (ym) => ym.slice(0, 4) + 'Q' + Math.ceil(+ym.slice(4, 6) / 3);
     // データの無い四半期も軸に含め、時間の間隔を正しく表示する
-    const yms = D.overview.monthlyByProc.map(e => e.ym).sort();
+    const yms = MONTHLY.map(e => e.ym).sort();
     const quarters = [];
     for (let y = +yms[0].slice(0, 4), q = Math.ceil(+yms[0].slice(4, 6) / 3); `${y}Q${q}` <= quarterOf(yms[yms.length - 1]); q === 4 ? (y++, q = 1) : q++) quarters.push(`${y}Q${q}`);
     const qIdx = new Map(quarters.map((q, i) => [q, i]));
@@ -913,7 +968,7 @@
     });
 
     // 製品一覧(方式順・件数順)。実績のない方式は参考行として末尾に表示
-    document.getElementById('dvTableSub').textContent = `${group.name}・${dom.procs.map(shortProc).join(' / ')}・全期間`;
+    document.getElementById('dvTableSub').textContent = `${group.name}・${dom.procs.map(shortProc).join(' / ')}・${periodLabel()}`;
     const thead = ['方式', '品名', '規格', 'メーカー', '使用件数', '群内シェア', '償還価格', '償還額合計'];
     document.getElementById('dvTable').querySelector('thead').innerHTML = '<tr>' + thead.map(h => `<th>${h}</th>`).join('') + '</tr>';
     const prodRows = [...sum.products].sort((a, b) => sum.types.indexOf(a.type) - sum.types.indexOf(b.type) || b.count - a.count).map(p => {
@@ -964,5 +1019,6 @@
     if (!document.documentElement.getAttribute('data-theme')) renderActiveTab();
   });
 
+  applyYear();
   renderOverview();
 })();

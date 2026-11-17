@@ -42,6 +42,10 @@ header{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:
 .brand p{margin:0;font-size:12px;color:var(--muted);}
 .theme-btn{border:1px solid var(--border);background:var(--surface-2);color:var(--text-sec);border-radius:999px;width:34px;height:34px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;flex:none;}
 .theme-btn:hover{color:var(--text);}
+.header-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end;}
+.year-pick{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--text-sec);}
+.year-pick select{font-size:14px;font-weight:700;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);}
+.year-hint{font-size:11.5px;color:var(--muted);}
 nav.tabs{display:flex;gap:8px;padding:0 24px;max-width:1440px;margin:0 auto;overflow-x:auto;}
 nav.tabs button{border:none;background:transparent;color:var(--text-sec);padding:16px 24px;font-size:16.5px;font-weight:700;cursor:pointer;border-radius:10px 10px 0 0;white-space:nowrap;border-bottom:3px solid transparent;}
 nav.tabs button:hover{background:var(--surface-2);}
@@ -157,7 +161,11 @@ footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;colo
       <h1>カテーテル室 医療材料ダッシュボード</h1>
       <p>循環器内科カテーテル室 医療材料使用実績・在庫データ分析</p>
     </div>
-    <button class="theme-btn" id="themeToggle" title="ライト/ダーク切替">🌓</button>
+    <div class="header-actions">
+      <span class="year-hint" id="yearHint"></span>
+      <label class="year-pick">対象年<select id="yearSel"></select></label>
+      <button class="theme-btn" id="themeToggle" title="ライト/ダーク切替">🌓</button>
+    </div>
   </div>
   <nav class="tabs" id="tabNav">
     <button data-tab="overview" class="active">データ概観</button>
@@ -197,7 +205,7 @@ footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;colo
       <label>処置内容</label>
       <select id="dmProc"></select>
     </div>
-    <span class="hint">施設別メーカー浸透度は全処置合計の値です(模擬データのため処置別内訳は非対応)</span>
+    <span class="hint">施設別メーカー浸透度は全期間・全処置合計の値です(模擬データのため年・処置別内訳は非対応)</span>
   </div>
   <div class="sidebar-panel" id="sidebar-inventory">
     <p class="sidebar-title">フィルター</p>
@@ -220,7 +228,7 @@ footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;colo
     <div class="filter-group">
       <div class="checkbox-row"><input type="checkbox" id="invRiskOnly"><label style="margin:0;font-weight:400;">欠品リスクのみ表示</label></div>
     </div>
-    <span class="hint">RFID棚在庫は実データが無いため、使用実績から統計的に推定した模擬値です<span class="info-dot" title="【定数(パー値)の設定方法】一般的なSPD運用の考え方「定数=日次消費量×リードタイム+安全在庫」を土台に、所有形態別の実務傾向を反映しています。&#10;・預託品(仕入先所有):欠品防止のためサイズ/型番違いを含め手厚く持つのが一般的なため10〜20本&#10;・買取の特定保険医療材料(自己資産の高額品):過剰在庫を避け3〜8本&#10;・一般消耗品(ガーゼ・シリンジ等):箱単位での補充が実務的なため12〜25本">i</span></span>
+    <span class="hint">在庫情報は現時点の状況のため、対象年の指定は反映されません。<br>RFID棚在庫は実データが無いため、使用実績から統計的に推定した模擬値です<span class="info-dot" title="【定数(パー値)の設定方法】一般的なSPD運用の考え方「定数=日次消費量×リードタイム+安全在庫」を土台に、所有形態別の実務傾向を反映しています。&#10;・預託品(仕入先所有):欠品防止のためサイズ/型番違いを含め手厚く持つのが一般的なため10〜20本&#10;・買取の特定保険医療材料(自己資産の高額品):過剰在庫を避け3〜8本&#10;・一般消耗品(ガーゼ・シリンジ等):箱単位での補充が実務的なため12〜25本">i</span></span>
   </div>
   <div class="sidebar-panel" id="sidebar-device">
     <p class="sidebar-title">フィルター</p>
@@ -320,7 +328,7 @@ footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;colo
           <table id="bmDevTable"><thead></thead><tbody></tbody></table>
         </div>
         <h3 id="bmDevTitle" style="margin-top:22px;"></h3>
-        <div class="card-sub">施設別の方式構成比(使用件数ベース・全期間)。ホバーで採用製品数を表示</div>
+        <div class="card-sub" id="bmDevMixSub"></div>
         <div class="chart-wrap tall"><canvas id="chartBmDevMix"></canvas></div>
       </div>
       <div class="card wide">
@@ -349,7 +357,7 @@ footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;colo
       </div>
       <div class="card wide">
         <h3>施設別 主要メーカー浸透度<span class="info-dot" title="【グラフの種類】ヒートマップ表&#10;【わかること】どのメーカーがどの施設に強い(色が濃い)/弱い(色が薄い)かが一目でわかり、メーカー・ディーラーにとっての営業ターゲット(浸透度が低い施設)を発見できます。">i</span></h3>
-        <div class="card-sub">上位8社内でのシェア構成比(%)・施設B〜Eは模擬データ・全処置合計。色が薄いセル=シェアが低い(営業機会の可能性)</div>
+        <div class="card-sub">上位8社内でのシェア構成比(%)・施設B〜Eは模擬データ・全期間・全処置合計。色が薄いセル=シェアが低い(営業機会の可能性)</div>
         <div class="table-scroll" style="max-height:none;">
           <table id="penetrationTable"><thead></thead><tbody></tbody></table>
         </div>
