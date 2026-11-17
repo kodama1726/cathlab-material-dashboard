@@ -219,16 +219,42 @@
   const FAC_COLOR_IDX = { A: 0, B: 1, C: 2, D: 3, E: 4 };
   function facShort(k) { return D.benchmark.facilities[k].shortLabel || (k + '病院'); }
 
-  function facMetric(fac, proc) {
+  // アブレーションのB〜E病院は、1症例あたり償還額を「アブレーションカテーテルの方式構成」と整合させる。
+  //   償還額/症例 = カテーテル以外の材料費(A病院と同水準と仮定) + カテーテル本数/症例(A病院と同じ) × 方式構成で加重した平均単価
+  // 方式別単価はA病院の実績平均。高額な方式(PFA等)の比率が高い施設ほど償還額が高くなる。
+  const ABL_PROC = '経皮的カテーテル心筋焼灼術';
+  function ablationCostModel(k) {
+    const dom = DEVICE_DOMAINS.find(d => d.key === 'abl');
+    const g = dom.groups[0];
+    const s = summarizeGroup(g, dom.procs);
+    const perCase = s.rows.length / D.cases.filter(c => c.procedure === ABL_PROC).length;
+    const typePrice = s.types.map(t => {
+      const rs = s.rows.filter(r => classifyType(g, r) === t);
+      return rs.length ? rs.reduce((a, r) => a + r.price, 0) / rs.length : 0;
+    });
+    const meanPrice = (shares) => shares.reduce((a, sh, i) => a + sh * typePrice[i], 0);
+    const otherCost = D.benchmark.facilities.A.procStats[ABL_PROC].avgReimburse - perCase * meanPrice(facilityDeviceStats('A', dom, g).shares);
+    const catheterCost = perCase * meanPrice(facilityDeviceStats(k, dom, g).shares);
+    return { avgReimburse: otherCost + catheterCost, catheterCost, otherCost, perCase };
+  }
+
+  function procStat(k, p) {
+    const s = D.benchmark.facilities[k].procStats[p];
+    if (k === 'A' || p !== ABL_PROC) return s;
+    const avgReimburse = ablationCostModel(k).avgReimburse;
+    return { ...s, avgReimburse, totalReimburse: avgReimburse * s.nCases };
+  }
+
+  function facMetric(k, proc) {
     if (proc === 'all') {
       let n = 0, itemsW = 0, reimburse = 0;
       for (const p of D.benchmark.procedures) {
-        const s = fac.procStats[p];
+        const s = procStat(k, p);
         n += s.nCases; itemsW += s.avgItems * s.nCases; reimburse += s.totalReimburse;
       }
       return { nCases: n, avgItems: n ? itemsW / n : 0, avgReimburse: n ? reimburse / n : 0 };
     }
-    const s = fac.procStats[proc];
+    const s = procStat(k, proc);
     return { nCases: s.nCases, avgItems: s.avgItems, avgReimburse: s.avgReimburse };
   }
 
@@ -295,10 +321,11 @@
     const proc = bmProcSel.value;
     renderProfiles();
 
-    document.getElementById('bmSub1').textContent = (proc === 'all' ? '全処置の加重平均' : shortProc(proc)) + 'で比較';
+    document.getElementById('bmSub1').textContent = (proc === 'all' ? '全処置の加重平均' : shortProc(proc)) + 'で比較'
+      + (proc === ABL_PROC || proc === 'all' ? '(アブレーションのB〜E病院はカテーテル方式構成から算出)' : '');
     document.getElementById('bmSub2').textContent = (proc === 'all' ? '全処置の加重平均' : shortProc(proc)) + 'で比較';
 
-    const metrics = FAC_KEYS.map(k => ({ k, ...facMetric(D.benchmark.facilities[k], proc) }));
+    const metrics = FAC_KEYS.map(k => ({ k, ...facMetric(k, proc) }));
     const facColors = FAC_KEYS.map(k => c.series[FAC_COLOR_IDX[k]]);
     renderPositioning(metrics);
 
@@ -307,7 +334,14 @@
       data: { labels: FAC_KEYS.map(facShort), datasets: [{ label: '平均償還額/症例', data: metrics.map(m => Math.round(m.avgReimburse)), backgroundColor: facColors, borderRadius: 4, borderSkipped: false, barPercentage: 0.55 }] },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: legendOpt(false), tooltip: { ...tooltipOpt(), callbacks: { label: (it) => fmtYen(it.raw) } } },
+        plugins: { legend: legendOpt(false), tooltip: { ...tooltipOpt(), callbacks: {
+          label: (it) => fmtYen(it.raw),
+          afterLabel: (it) => {
+            if (proc !== ABL_PROC) return '';
+            const m = ablationCostModel(FAC_KEYS[it.dataIndex]);
+            return `うちアブレーションカテーテル ${fmtYen(m.catheterCost)}(平均${m.perCase.toFixed(1)}本)\nその他の材料 ${fmtYen(m.otherCost)}`;
+          }
+        } } },
         scales: { x: { grid: { display: false }, ticks: tickOpt() }, y: { grid: gridOpt(), ticks: { ...tickOpt(), callback: (v) => (v / 1000) + 'k' }, beginAtZero: true } }
       }
     });
@@ -370,7 +404,7 @@
     document.getElementById('bmTable').querySelector('thead').innerHTML = '<tr>' + theadCols.map(h => `<th>${h}</th>`).join('') + '</tr>';
     const tbody = FAC_KEYS.map(k => {
       const f = D.benchmark.facilities[k];
-      const m = facMetric(f, proc);
+      const m = facMetric(k, proc);
       const sim = f.own ? '基準(自施設)' : D.benchmark.similarity[k].toFixed(3);
       return `<tr>
         <td><b style="color:${colors().series[FAC_COLOR_IDX[k]]}">●</b> ${f.label}</td>
@@ -771,7 +805,15 @@
           legend: legendOpt(true),
           tooltip: { ...tooltipOpt(), callbacks: {
             label: (it) => `${it.dataset.label}: ${it.raw}%`,
-            footer: (items) => { const st = selStats[items[0].dataIndex]; return `採用 ${st.used}/${st.nTypes}方式・${st.nProducts}製品・実効製品数 ${st.eff.toFixed(1)}`; }
+            footer: (items) => {
+              const st = selStats[items[0].dataIndex];
+              const lines = [`採用 ${st.used}/${st.nTypes}方式・${st.nProducts}製品・実効製品数 ${st.eff.toFixed(1)}`];
+              if (sel.g === DEVICE_DOMAINS.find(d => d.key === 'abl').groups[0]) {
+                const m = ablationCostModel(facKeys[items[0].dataIndex]);
+                lines.push(`アブレーションカテーテル費/症例 ${fmtYen(m.catheterCost)}・材料償還額/症例 ${fmtYen(m.avgReimburse)}`);
+              }
+              return lines;
+            }
           } }
         },
         scales: {
