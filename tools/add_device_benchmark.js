@@ -1,4 +1,5 @@
-// 他施設ベンチマーク用に、施設B〜Eの「主要デバイスの方式構成」を生成するためのプロファイルを data.js に書き込む。
+// 他施設ベンチマーク用に、施設B〜Eの「主要デバイスの方式構成」「1症例あたり材料使用量」「新規方式の導入時期」を
+// 生成するためのプロファイルを data.js に書き込む。
 // 使い方: node tools/add_device_benchmark.js data.js   (再実行すると上書き)
 // 画面側(app.js)では、A病院の実績の方式別シェアに以下を適用して各施設の値を求める:
 //   シェア = A病院シェア × mult[方式] + add[方式] → 合計1に正規化(mult=0の方式は未採用)
@@ -71,5 +72,18 @@ D.benchmark.deviceProfiles = {
   }
 };
 
+// 1症例あたり材料使用量の係数(A病院の実績値に乗じる。使用率は100%を上限)と、新規方式の導入時期の差(四半期、負=A病院より早い)。
+// 指標キーは app.js の USAGE_INDICATORS と対応。
+D.benchmark.usageProfiles = {
+  // 大学病院: 複雑病変・研究症例が多く、イメージング・デバルキング・ICEの使用が多い
+  B: { adoptionLag: -1, mult: { stents: 1.05, balloons: 1.15, guidewires: 1.25, imaging: 1.05, closure: 1.6, debulking: 1.8, touchup: 1.3, hdMapping: 1.15, ice: 1.6, diagCath: 0.95, pmLeads: 0.95, icdLeads: 0.9 } },
+  // 地域医療支援病院: 標準的な手技が中心。大腿動脈アプローチがやや多く止血デバイスを使う
+  C: { adoptionLag: 1, mult: { stents: 1.02, balloons: 1.05, guidewires: 0.9, imaging: 0.9, closure: 1.3, debulking: 0.6, touchup: 0.7, hdMapping: 0.75, ice: 0.6, diagCath: 0.9, pmLeads: 1.02, icdLeads: 1.0 } },
+  // 心臓血管センター: CTO・石灰化病変が多く、ワイヤー・バルーン・デバルキングの使用が多い。PFA中心でマッピングは少なめ
+  D: { adoptionLag: -2, mult: { stents: 1.12, balloons: 1.25, guidewires: 1.4, imaging: 1.05, closure: 1.4, debulking: 2.2, touchup: 1.1, hdMapping: 0.8, ice: 1.3, diagCath: 0.85, pmLeads: 0.92, icdLeads: 0.95 } },
+  // 一般病院: 材料を絞った運用、イメージング・止血デバイス・ICEの使用が少ない
+  E: { adoptionLag: 2, mult: { stents: 0.95, balloons: 0.98, guidewires: 0.85, imaging: 0.8, closure: 0.7, debulking: 0.3, touchup: 0.5, hdMapping: 0.6, ice: 0.3, diagCath: 1.1, pmLeads: 1.05, icdLeads: 1.05 } }
+};
+
 fs.writeFileSync(dataPath, PREFIX + JSON.stringify(D) + ';');
-console.log('deviceProfiles written for', Object.keys(D.benchmark.deviceProfiles).join(','));
+console.log('deviceProfiles / usageProfiles written for', Object.keys(D.benchmark.deviceProfiles).join(','));

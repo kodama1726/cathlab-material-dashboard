@@ -137,6 +137,9 @@ th.dev-col{cursor:pointer;white-space:normal;min-width:96px;}
 th.dev-col:hover{color:var(--text);}
 th.dev-col.active{color:var(--s1);box-shadow:inset 0 -2px 0 var(--s1);}
 #bmDevTable .heatcell{line-height:1.5;}
+#bmUsageTable .heatcell{color:var(--text);}
+.funnel-note{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:12px;color:var(--text-sec);}
+.funnel-item{display:inline-flex;align-items:center;gap:6px;}
 .mix-row{display:grid;grid-template-columns:210px 1fr;gap:14px;align-items:center;padding:10px;border-radius:10px;cursor:pointer;}
 .mix-row:hover{background:var(--surface-2);}
 .mix-row.active{background:var(--surface-2);box-shadow:inset 3px 0 0 var(--s1);}
@@ -315,6 +318,25 @@ footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;colo
         <h3>自施設との類似度<span class="info-dot" title="【グラフの種類】横棒グラフ&#10;【わかること】処置構成比から算出した類似度により、自施設と症例傾向が近い施設が一目でわかります(ベンチマーク相手の選定に有用)。">i</span></h3>
         <div class="card-sub">処置構成比のコサイン類似度(1.0に近いほど症例傾向が類似)</div>
         <div class="chart-wrap"><canvas id="chartBmSimilarity"></canvas></div>
+      </div>
+      <div class="card wide">
+        <h3>1症例あたり材料使用量の比較<span class="info-dot" title="【種類】表(ヒートマップ)&#10;【わかること】ステント・バルーン・ガイドワイヤーの本数や、血管内イメージング・止血デバイス・高密度マッピング等の使用率を施設間で比べ、診療プロセスの違い(使いすぎ・使わなさすぎ)を発見できます。&#10;【算出方法】A病院は対象年の実績。B〜E病院はA病院の値に施設特性を反映した係数を乗じた模擬値です。">i</span></h3>
+        <div class="card-sub" id="bmUsageSub"></div>
+        <div class="table-scroll" style="max-height:none;">
+          <table id="bmUsageTable"><thead></thead><tbody></tbody></table>
+        </div>
+      </div>
+      <div class="card">
+        <h3>ファンネルプロット(材料費のばらつき)<span class="info-dot" title="【グラフの種類】ファンネルプロット(散布図+管理限界線)&#10;【わかること】症例数が少ない施設ほど平均値は偶然でぶれやすいことを考慮したうえで、1症例あたり材料償還額が「偶然の範囲を超えて」高い・低い施設を判定できます。漏斗(ファンネル)の外側にある施設が要注目です。&#10;【算出方法】中心線=5施設の症例数加重平均。管理限界=中心±z×SD/√症例数(z=1.96:95%、3.09:99.8%)。SDはA病院の症例間標準偏差を全施設に適用しています。">i</span></h3>
+        <div class="card-sub">横軸=症例数、縦軸=1症例あたり材料償還額。選択中の処置内容・対象年に連動</div>
+        <div class="chart-wrap tall" id="bmFunnelWrap"><canvas id="chartBmFunnel"></canvas></div>
+        <div class="funnel-note" id="bmFunnelNote"></div>
+      </div>
+      <div class="card">
+        <h3>新しい方式の導入推移<span class="info-dot" title="【グラフの種類】折れ線グラフ&#10;【わかること】PFA・OCT・リードレスペースメーカ・S-ICDなど新しい方式の比率が、施設ごとにいつ・どの速さで伸びたか(導入の早さ)を比較できます。&#10;【算出方法】A病院は実績(四半期)。B〜E病院は導入時期の差(四半期単位)と方式構成の係数を反映した模擬値です。年指定に関係なく全期間を表示します。">i</span></h3>
+        <div class="card-sub">デバイス群内での比率(使用件数ベース・四半期)。全期間表示、データの無い四半期は空白</div>
+        <div class="filter-group" style="margin-bottom:8px;"><select id="bmAdoptTarget" style="max-width:360px;"></select></div>
+        <div class="chart-wrap"><canvas id="chartBmAdopt"></canvas></div>
       </div>
       <div class="card wide">
         <h3>処置構成比の比較<span class="info-dot" title="【グラフの種類】100%積み上げ横棒グラフ&#10;【わかること】各施設がどの処置(PCI・アブレーション・PM/ICD等)にどれだけ注力しているか、診療の得意分野の違いがわかります。">i</span></h3>

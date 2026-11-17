@@ -255,20 +255,23 @@
   function facShort(k) { return D.benchmark.facilities[k].shortLabel || (k + '病院'); }
 
   // アブレーションのB〜E病院は、1症例あたり償還額を「アブレーションカテーテルの方式構成」と整合させる。
-  //   償還額/症例 = カテーテル以外の材料費(A病院と同水準と仮定) + カテーテル本数/症例(A病院と同じ) × 方式構成で加重した平均単価
-  // 方式別単価はA病院の実績平均。高額な方式(PFA等)の比率が高い施設ほど償還額が高くなる。
+  //   償還額/症例 = カテーテル以外の材料費(A病院と同水準と仮定) + カテーテル本数/症例 × 方式構成で加重した平均単価
+  // カテーテル本数/症例 = A病院の本数 + (各施設の追加焼灼率 − A病院の追加焼灼率)。方式別単価はA病院の実績平均。
+  // 高額な方式(PFA等)の比率や追加焼灼率が高い施設ほど償還額が高くなる。
   const ABL_PROC = '経皮的カテーテル心筋焼灼術';
   function ablationCostModel(k) {
     const dom = DEVICE_DOMAINS.find(d => d.key === 'abl');
     const g = dom.groups[0];
     const s = summarizeGroup(g, dom.procs);
-    const perCase = s.rows.length / CASES.filter(c => c.procedure === ABL_PROC).length;
+    const perCaseA = s.rows.length / CASES.filter(c => c.procedure === ABL_PROC).length;
+    const touchup = USAGE_INDICATORS.find(ind => ind.key === 'touchup');
+    const perCase = perCaseA + facilityUsage(k, touchup) - facilityUsage('A', touchup);
     const typePrice = s.types.map(t => {
       const rs = s.rows.filter(r => classifyType(g, r) === t);
       return rs.length ? rs.reduce((a, r) => a + r.price, 0) / rs.length : 0;
     });
     const meanPrice = (shares) => shares.reduce((a, sh, i) => a + sh * typePrice[i], 0);
-    const otherCost = ownProcStat(ABL_PROC).avgReimburse - perCase * meanPrice(facilityDeviceStats('A', dom, g).shares);
+    const otherCost = ownProcStat(ABL_PROC).avgReimburse - perCaseA * meanPrice(facilityDeviceStats('A', dom, g).shares);
     const catheterCost = perCase * meanPrice(facilityDeviceStats(k, dom, g).shares);
     return { avgReimburse: otherCost + catheterCost, catheterCost, otherCost, perCase };
   }
@@ -474,6 +477,9 @@
     document.getElementById('bmTable').querySelector('tbody').innerHTML = tbody;
 
     renderDeviceBenchmark(proc);
+    renderUsageBenchmark(proc);
+    renderFunnel(proc);
+    renderAdoption();
   }
 
   // ================================================================
@@ -796,6 +802,15 @@
   const bmDevGroupSel = document.getElementById('bmDevGroup');
   bmDevGroupSel.addEventListener('change', () => renderDeviceBenchmark(bmProcSel.value));
 
+  // A病院の方式別シェアに施設プロファイル(mult/add)を適用し、合計1に正規化する
+  function applyDeviceProfile(k, g, types, aShares) {
+    const pf = D.benchmark.deviceProfiles[k][g.name] || {};
+    const mult = pf.mult || {}, add = pf.add || {};
+    const raw = types.map((t, i) => aShares[i] * (mult[t.label] !== undefined ? mult[t.label] : 1) + (add[t.label] || 0));
+    const sum = raw.reduce((a, b) => a + b, 0) || 1;
+    return raw.map(v => v / sum);
+  }
+
   function facilityDeviceStats(k, dom, g) {
     const s = summarizeGroup(g, dom.procs);
     const n = s.rows.length;
@@ -804,10 +819,7 @@
     let shares = aShares, nProducts = s.products.length, eff = aEff;
     if (k !== 'A' && n) {
       const pf = D.benchmark.deviceProfiles[k][g.name] || {};
-      const mult = pf.mult || {}, add = pf.add || {};
-      const raw = s.types.map((t, i) => aShares[i] * (mult[t.label] !== undefined ? mult[t.label] : 1) + (add[t.label] || 0));
-      const sum = raw.reduce((a, b) => a + b, 0) || 1;
-      shares = raw.map(v => v / sum);
+      shares = applyDeviceProfile(k, g, s.types, aShares);
       const used = shares.filter(v => v > 0).length;
       nProducts = Math.max(used, s.products.length + (pf.productDelta || 0));
       eff = Math.min(nProducts, Math.max(1, aEff * nProducts / s.products.length));
@@ -885,6 +897,184 @@
     bmDevGroupSel.value = el.dataset.group;
     renderDeviceBenchmark(bmProcSel.value);
   });
+
+  // ---- 他施設ベンチマーク: 1症例あたり材料使用量 ----
+  // A病院は対象年の実績から集計。B〜Eは A病院の値 × 施設係数(data.js benchmark.usageProfiles)の模擬値(使用率は100%上限)
+  const PCI_PROCS = ['PCI（待機的）', 'PCI（緊急）'];
+  const inMaterials = (...mats) => (r) => mats.includes(r.material);
+  const USAGE_INDICATORS = [
+    { key: 'stents', procs: PCI_PROCS, label: 'ステント本数', kind: 'count', match: inMaterials('冠動脈ステント（薬剤溶出型）') },
+    { key: 'balloons', procs: PCI_PROCS, label: 'PTCAバルーン本数', kind: 'count', match: inMaterials('PTCAダイレーテーションカテーテル（一般型）', 'PTCAダイレーテーションカテーテル（高圧型）') },
+    { key: 'guidewires', procs: PCI_PROCS, label: 'PTCAガイドワイヤー本数', kind: 'count', match: inMaterials('PTCAガイドワイヤー（標準型）', 'PTCAガイドワイヤー（貫通型）') },
+    { key: 'imaging', procs: PCI_PROCS, label: '血管内イメージング使用率', kind: 'rate', match: inMaterials('血管内超音波カテーテル', '血管内光干渉断層用カテーテル') },
+    { key: 'closure', procs: PCI_PROCS, label: '止血デバイス使用率', kind: 'rate', match: inMaterials('経皮的血管穿刺部止血材料') },
+    { key: 'debulking', procs: PCI_PROCS, label: 'デバルキング使用率', kind: 'rate', match: inMaterials('アテローム切除用カテーテル', '高速回転式経皮経管アテレクトミーカテーテル') },
+    { key: 'touchup', procs: [ABL_PROC], label: '追加焼灼率(治療用カテーテル2本以上)', kind: 'rate2', match: inMaterials('心臓用カテーテル(アブレーション用)') },
+    { key: 'hdMapping', procs: [ABL_PROC], label: '高密度マッピング使用率', kind: 'rate', match: (r) => r.material === '心臓用カテーテル(診断用 複数電極)' && /Orion|PentaRay|Advisor HD/.test(D.products[r.code].name) },
+    { key: 'ice', procs: [ABL_PROC], label: '心腔内エコー(ICE)使用率', kind: 'rate', match: inMaterials('血管内超音波カテーテル') },
+    { key: 'diagCath', procs: [ABL_PROC], label: '診断用電極カテーテル本数', kind: 'count', match: inMaterials('心臓用カテーテル(診断用 複数電極)') },
+    { key: 'pmLeads', procs: ['ペースメーカー移植術'], label: 'リード本数', kind: 'count', match: inMaterials('ペースメーカ用リード') },
+    { key: 'icdLeads', procs: ['植込型除細動器移植術'], label: 'リード・電極本数', kind: 'count', match: (r) => /リード/.test(r.material) }
+  ];
+  const caseKey = (r) => r.date + '|' + r.procedure + '|' + (r.cid || '');
+
+  // A病院の実績値(対象年)。症例が無ければ null
+  function ownUsage(ind) {
+    const n = CASES.filter(c => ind.procs.includes(c.procedure)).length;
+    if (!n) return null;
+    const rows = ROWS.filter(r => ind.procs.includes(r.procedure) && ind.match(r));
+    if (ind.kind === 'count') return rows.length / n;
+    const perCase = new Map();
+    for (const r of rows) perCase.set(caseKey(r), (perCase.get(caseKey(r)) || 0) + 1);
+    return [...perCase.values()].filter(v => v >= (ind.kind === 'rate2' ? 2 : 1)).length / n;
+  }
+  function facilityUsage(k, ind) {
+    const own = ownUsage(ind);
+    if (own === null || k === 'A') return own;
+    const v = own * (D.benchmark.usageProfiles[k].mult[ind.key] || 1);
+    return ind.kind === 'count' ? v : Math.min(1, v);
+  }
+  const fmtUsage = (ind, v) => v === null ? '-' : ind.kind === 'count' ? v.toFixed(2) + '本' : (v * 100).toFixed(1) + '%';
+
+  function renderUsageBenchmark(proc) {
+    const list = USAGE_INDICATORS.filter(ind => (proc === 'all' || ind.procs.includes(proc)) && ownUsage(ind) !== null);
+    document.getElementById('bmUsageSub').textContent = `${periodLabel()}・1症例あたり。色の濃さ=指標内での相対値、右端=他4施設の中央値に対するA病院の差(±5%未満は同水準)。施設B〜Eは施設特性を反映した模擬値`;
+    const table = document.getElementById('bmUsageTable');
+    table.querySelector('thead').innerHTML = '<tr><th>領域</th><th>指標</th>' + FAC_KEYS.map(k => `<th>${facShort(k)}</th>`).join('') + '<th>他4施設中央値</th><th>A病院 vs 中央値</th></tr>';
+    let prevGroup = '';
+    table.querySelector('tbody').innerHTML = list.map(ind => {
+      const vals = FAC_KEYS.map(k => facilityUsage(k, ind));
+      const max = Math.max(...vals) || 1;
+      const peers = vals.slice(1).sort((a, b) => a - b);
+      const median = (peers[1] + peers[2]) / 2;
+      const diff = median ? (vals[0] - median) / median : 0;
+      const group = ind.procs === PCI_PROCS ? 'PCI' : shortProc(ind.procs[0]);
+      const groupCell = group === prevGroup ? '' : group;
+      prevGroup = group;
+      const cells = vals.map((v, i) => {
+        const alpha = 0.1 + 0.6 * (v / max);
+        return `<td><div class="heatcell" style="background:color-mix(in srgb, var(--s1) ${(alpha * 100).toFixed(0)}%, transparent);${i === 0 ? 'box-shadow:inset 0 0 0 1.5px var(--s1);' : ''}">${fmtUsage(ind, v)}</div></td>`;
+      }).join('');
+      const diffTxt = Math.abs(diff) < 0.05 ? '<span style="color:var(--muted)">同水準</span>'
+        : `<b style="color:${diff > 0 ? 'var(--serious)' : 'var(--s1)'}">${diff > 0 ? '+' : ''}${(diff * 100).toFixed(0)}%</b> ${diff > 0 ? '多い' : '少ない'}`;
+      return `<tr><td><b>${groupCell}</b></td><td>${ind.label}</td>${cells}<td>${fmtUsage(ind, median)}</td><td>${diffTxt}</td></tr>`;
+    }).join('') || `<tr><td colspan="9" style="color:var(--muted)">${periodLabel()}は対象となる指標のデータがありません</td></tr>`;
+  }
+
+  // ---- 他施設ベンチマーク: ファンネルプロット(症例数 × 1症例あたり材料償還額) ----
+  // 管理限界 = 5施設の症例数加重平均 ± z × SD/√n(SDはA病院の症例間標準偏差を全施設に適用)
+  function renderFunnel(proc) {
+    const wrap = document.getElementById('bmFunnelWrap');
+    const note = document.getElementById('bmFunnelNote');
+    if (proc === 'all') {
+      wrap.style.display = 'none';
+      note.innerHTML = '左の「処置内容」で処置を選択すると表示します(処置により材料費の水準が大きく異なるため、全処置合算では作成しません)';
+      return;
+    }
+    wrap.style.display = '';
+    const c = colors();
+    const own = CASES.filter(cs => cs.procedure === proc).map(cs => cs.reimburse);
+    const mean = own.reduce((a, b) => a + b, 0) / own.length;
+    const sd = Math.sqrt(own.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, own.length - 1));
+    const pts = FAC_KEYS.map(k => { const m = facMetric(k, proc); return { k, n: m.nCases * periodYears(), y: m.avgReimburse }; });
+    const center = pts.reduce((a, p) => a + p.n * p.y, 0) / pts.reduce((a, p) => a + p.n, 0);
+    const nMax = Math.max(...pts.map(p => p.n)) * 1.25, nMin = Math.max(1, Math.min(...pts.map(p => p.n)) * 0.5);
+    const xs = Array.from({ length: 60 }, (_, i) => nMin + (nMax - nMin) * i / 59);
+    const limit = (z, sign) => xs.map(x => ({ x, y: center + sign * z * sd / Math.sqrt(x) }));
+    const lineDs = (label, data, color, dash) => ({ type: 'line', label, data, borderColor: color, borderWidth: 1.5, borderDash: dash, pointRadius: 0, fill: false, tension: 0 });
+    makeChart('chartBmFunnel', {
+      type: 'scatter',
+      data: {
+        datasets: [
+          ...pts.map(p => ({ label: facShort(p.k) + (p.k === 'A' ? '(自施設)' : ''), data: [{ x: p.n, y: p.y }], backgroundColor: c.series[FAC_COLOR_IDX[p.k]], borderColor: p.k === 'A' ? c.text : c.surface, borderWidth: 2, pointRadius: p.k === 'A' ? 9 : 7, pointHoverRadius: 10 })),
+          lineDs('平均', xs.map(x => ({ x, y: center })), c.muted, []),
+          lineDs('95%管理限界', limit(1.96, 1), STATUS.warning, [6, 4]),
+          lineDs('95%管理限界(下)', limit(1.96, -1), STATUS.warning, [6, 4]),
+          lineDs('99.8%管理限界', limit(3.09, 1), STATUS.critical, [2, 3]),
+          lineDs('99.8%管理限界(下)', limit(3.09, -1), STATUS.critical, [2, 3])
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { ...legendOpt(true), labels: { ...legendOpt(true).labels, filter: (item) => !/\(下\)/.test(item.text) } },
+          tooltip: { ...tooltipOpt(), filter: (it) => it.datasetIndex < pts.length, callbacks: { label: (it) => `${it.dataset.label}: ${fmtNum(it.raw.x)}症例・${fmtYen(it.raw.y)}/症例` } }
+        },
+        scales: {
+          x: { type: 'linear', title: { display: true, text: `症例数(${periodLabel()})`, color: c.textSec }, grid: gridOpt(), ticks: tickOpt() },
+          y: { title: { display: true, text: '1症例あたり材料償還額', color: c.textSec }, grid: gridOpt(), ticks: { ...tickOpt(), callback: (v) => (v / 1000).toFixed(0) + 'k' } }
+        }
+      }
+    });
+    note.innerHTML = pts.map(p => {
+      const z = (p.y - center) / (sd / Math.sqrt(p.n));
+      const status = Math.abs(z) > 3.09 ? `<span class="badge critical">${z > 0 ? '高い' : '低い'}(99.8%限界外)</span>`
+        : Math.abs(z) > 1.96 ? `<span class="badge warning">${z > 0 ? 'やや高い' : 'やや低い'}(95%限界外)</span>`
+        : '<span class="badge good">限界内(偶然の範囲)</span>';
+      return `<span class="funnel-item"><b>${facShort(p.k)}</b> ${status}</span>`;
+    }).join('');
+  }
+
+  // ---- 他施設ベンチマーク: 新しい方式の導入推移 ----
+  // A病院は実績(全期間・四半期)。B〜Eは導入時期の差(adoptionLag、四半期)だけずらしたA病院の方式構成に施設プロファイルを適用した模擬値
+  const ADOPTION_TARGETS = [
+    { domain: 'abl', group: 0, type: 'パルスフィールド(PFA)', label: 'パルスフィールド(PFA) / アブレーションカテーテル' },
+    { domain: 'pci', group: 1, type: 'OCT/OFDI(光干渉断層)', label: 'OCT/OFDI / 冠動脈イメージング' },
+    { domain: 'cied', group: 0, type: 'リードレス', label: 'リードレス / ペースメーカ本体' },
+    { domain: 'cied', group: 1, type: '皮下植込型(S-ICD)', label: '皮下植込型(S-ICD) / ICD本体' }
+  ];
+  const bmAdoptSel = document.getElementById('bmAdoptTarget');
+  bmAdoptSel.innerHTML = ADOPTION_TARGETS.map((t, i) => `<option value="${i}">${t.label}</option>`).join('');
+  bmAdoptSel.addEventListener('change', renderAdoption);
+
+  function renderAdoption() {
+    const c = colors();
+    const target = ADOPTION_TARGETS[+bmAdoptSel.value];
+    const dom = DEVICE_DOMAINS.find(d => d.key === target.domain);
+    const g = dom.groups[target.group];
+    const types = g.types;
+    const ti = types.findIndex(t => t.label === target.type);
+    const quarterOf = (ym) => ym.slice(0, 4) + 'Q' + Math.ceil(+ym.slice(4, 6) / 3);
+    const rows = D.rawRows.filter(r => dom.procs.includes(r.procedure) && g.materials.includes(r.material));
+    const byQ = new Map();
+    for (const r of rows) {
+      const q = quarterOf(r.ym);
+      if (!byQ.has(q)) byQ.set(q, types.map(() => 0));
+      const t = classifyType(g, r);
+      const i = types.indexOf(t);
+      if (i >= 0) byQ.get(q)[i]++;
+    }
+    const qs = [...byQ.keys()].sort();
+    const quarters = [];
+    for (let y = +qs[0].slice(0, 4), q = +qs[0].slice(5); `${y}Q${q}` <= qs[qs.length - 1]; q === 4 ? (y++, q = 1) : q++) quarters.push(`${y}Q${q}`);
+    const aShares = quarters.map(q => { const v = byQ.get(q); if (!v) return null; const n = v.reduce((a, b) => a + b, 0); return n ? v.map(x => x / n) : null; });
+    const series = FAC_KEYS.map(k => {
+      const lag = k === 'A' ? 0 : D.benchmark.usageProfiles[k].adoptionLag;
+      return quarters.map((q, i) => {
+        const j = Math.min(quarters.length - 1, Math.max(0, i - lag));
+        const sh = aShares[j];
+        if (!sh || !aShares[i]) return null;
+        return +((k === 'A' ? sh : applyDeviceProfile(k, g, types, sh))[ti] * 100).toFixed(1);
+      });
+    });
+    makeChart('chartBmAdopt', {
+      type: 'line',
+      data: {
+        labels: quarters,
+        datasets: FAC_KEYS.map((k, i) => ({
+          label: facShort(k) + (k === 'A' ? '(自施設)' : ''), data: series[i],
+          borderColor: c.series[FAC_COLOR_IDX[k]], backgroundColor: c.series[FAC_COLOR_IDX[k]],
+          borderWidth: k === 'A' ? 3 : 1.8, pointRadius: k === 'A' ? 3 : 2, tension: 0.25, spanGaps: false
+        }))
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: legendOpt(true), tooltip: { ...tooltipOpt(), mode: 'index', intersect: false, callbacks: { label: (it) => `${it.dataset.label}: ${it.raw}%` } } },
+        interaction: { mode: 'index', intersect: false },
+        scales: { x: { grid: { display: false }, ticks: { ...tickOpt(), maxRotation: 0, autoSkip: true } }, y: { min: 0, grid: gridOpt(), ticks: { ...tickOpt(), callback: (v) => v + '%' } } }
+      }
+    });
+  }
 
   function renderDevice() {
     applyChartDefaults();
