@@ -963,6 +963,16 @@
 
   // ---- 他施設ベンチマーク: ファンネルプロット(症例数 × 1症例あたり材料償還額) ----
   // 管理限界 = 5施設の症例数加重平均 ± z × SD/√n(SDはA病院の症例間標準偏差を全施設に適用)
+  function funnelStats(proc) {
+    const own = CASES.filter(cs => cs.procedure === proc).map(cs => cs.reimburse);
+    const mean = own.reduce((a, b) => a + b, 0) / own.length;
+    const sd = Math.sqrt(own.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, own.length - 1));
+    const pts = FAC_KEYS.map(k => { const m = facMetric(k, proc); return { k, n: m.nCases * periodYears(), y: m.avgReimburse }; });
+    const center = pts.reduce((a, p) => a + p.n * p.y, 0) / pts.reduce((a, p) => a + p.n, 0);
+    pts.forEach(p => { p.z = sd ? (p.y - center) / (sd / Math.sqrt(p.n)) : 0; });
+    return { pts, center, sd };
+  }
+
   function renderFunnel(proc) {
     const wrap = document.getElementById('bmFunnelWrap');
     const note = document.getElementById('bmFunnelNote');
@@ -973,11 +983,7 @@
     }
     wrap.style.display = '';
     const c = colors();
-    const own = CASES.filter(cs => cs.procedure === proc).map(cs => cs.reimburse);
-    const mean = own.reduce((a, b) => a + b, 0) / own.length;
-    const sd = Math.sqrt(own.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, own.length - 1));
-    const pts = FAC_KEYS.map(k => { const m = facMetric(k, proc); return { k, n: m.nCases * periodYears(), y: m.avgReimburse }; });
-    const center = pts.reduce((a, p) => a + p.n * p.y, 0) / pts.reduce((a, p) => a + p.n, 0);
+    const { pts, center, sd } = funnelStats(proc);
     const nMax = Math.max(...pts.map(p => p.n)) * 1.25, nMin = Math.max(1, Math.min(...pts.map(p => p.n)) * 0.5);
     const xs = Array.from({ length: 60 }, (_, i) => nMin + (nMax - nMin) * i / 59);
     const limit = (z, sign) => xs.map(x => ({ x, y: center + sign * z * sd / Math.sqrt(x) }));
@@ -1187,10 +1193,217 @@
   });
 
   // ================================================================
+  // TAB 0: 経営サマリー
+  // ================================================================
+  // 他施設ベンチマーク・使用量・導入推移の結果を、経営判断向けに年間金額と判断事項へ集約する。
+  // 金額は対象期間の実績を年換算(÷ periodYears)。差益率の改善幅・破棄削減目標はサイドバーのシナリオ値
+  const exMarginPt = document.getElementById('exMarginPt');
+  const exDiscardCut = document.getElementById('exDiscardCut');
+  [exMarginPt, exDiscardCut].forEach(el => el.addEventListener('input', renderExecutive));
+  const DEVICE_IMPLANT_PROCS = ['ペースメーカー移植術', '植込型除細動器移植術', '両心室ペースメーカー移植術'];
+  const median = (arr) => { const s = [...arr].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+  const fmtMan = (n) => (n >= 1e8 ? (n / 1e8).toFixed(2) + '億円' : Math.round(n / 1e4).toLocaleString('ja-JP') + '万円');
+  const statusBadge = (level, text) => `<span class="badge ${level}">${text}</span>`;
+
+  function typeShare(k, domainKey, groupIdx, typeLabel) {
+    const dom = DEVICE_DOMAINS.find(d => d.key === domainKey);
+    const g = dom.groups[groupIdx];
+    const st = facilityDeviceStats(k, dom, g);
+    const i = st.types.findIndex(t => t.label === typeLabel);
+    return st.shares.every(v => v === 0) ? null : st.shares[i];
+  }
+
+  function renderExecutive() {
+    applyChartDefaults();
+    const c = colors();
+    const yrs = periodYears();
+    const marginPt = Math.max(0, +exMarginPt.value || 0);
+    const discardCut = Math.min(100, Math.max(0, +exDiscardCut.value || 0)) / 100;
+    const procs = PROC_ORDER.filter(p => CASES.some(cs => cs.procedure === p));
+    const annual = (v) => v / yrs;
+    const totalReimb = CASES.reduce((s, cs) => s + cs.reimburse, 0);
+    const scopeLabel = yearSel.value === 'all' ? '全期間の年換算' : (yrs < 0.99 ? `${periodLabel()}・年換算` : periodLabel());
+
+    // ---- 処置別の他施設比較 ----
+    const procRows = procs.map(p => {
+      const cs = CASES.filter(x => x.procedure === p);
+      const total = cs.reduce((s, x) => s + x.reimburse, 0);
+      const vals = FAC_KEYS.map(k => facMetric(k, p).avgReimburse);
+      const peerMed = median(vals.slice(1));
+      const rank = [...vals].sort((a, b) => a - b).indexOf(vals[0]) + 1;
+      const z = funnelStats(p).pts[0].z;
+      let prev = null;
+      if (yearSel.value !== 'all') {
+        const pc = D.cases.filter(x => x.procedure === p && x.date.startsWith(String(+yearSel.value - 1)));
+        if (pc.length) prev = pc.reduce((s, x) => s + x.reimburse, 0) / pc.length;
+      }
+      return { p, n: cs.length, annualN: annual(cs.length), annualTotal: annual(total), avg: vals[0], peerMed, diff: (vals[0] - peerMed) / peerMed, rank, z, prev };
+    });
+
+    // ---- 全処置の1症例あたり ----
+    const allVals = FAC_KEYS.map(k => facMetric(k, 'all').avgReimburse);
+    const allPeerMed = median(allVals.slice(1));
+    const allDiff = (allVals[0] - allPeerMed) / allPeerMed;
+    const allRank = [...allVals].sort((a, b) => a - b).indexOf(allVals[0]) + 1;
+
+    // ---- 材料区分別のパレート ----
+    const byCat = new Map();
+    for (const r of ROWS) if (r.price > 0) byCat.set(r.material, (byCat.get(r.material) || 0) + r.price);
+    const cats = [...byCat].sort((a, b) => b[1] - a[1]);
+    let cum = 0;
+    const pareto = cats.map(([name, v]) => { cum += v; return { name, v, cumPct: cum / totalReimb }; });
+    const top80 = pareto.findIndex(x => x.cumPct >= 0.8) + 1;
+    const top80Value = pareto.slice(0, top80).reduce((s, x) => s + x.v, 0);
+    const deviceCases = CASES.filter(x => DEVICE_IMPLANT_PROCS.includes(x.procedure));
+    const deviceShareCases = deviceCases.length / CASES.length;
+    const deviceShareValue = deviceCases.reduce((s, x) => s + x.reimburse, 0) / totalReimb;
+
+    // ---- 破棄・破損 ----
+    const discards = ROWS.filter(r => r.useType === '破棄破損' && r.price > 0);
+    const discardValue = discards.reduce((s, r) => s + r.price, 0);
+    const discardTop = [...discards.reduce((m, r) => m.set(r.code, (m.get(r.code) || 0) + r.price), new Map())].sort((a, b) => b[1] - a[1]).slice(0, 3)
+      .map(([code]) => D.products[code].name);
+
+    // ---- 在庫(現時点) ----
+    const purchaseStock = D.inventory.items.filter(i => !i.consignment).reduce((s, i) => s + i.stockValue, 0);
+    const riskItems = D.inventory.items.filter(i => i.stockoutRisk);
+
+    // ---- 使用量の差(他4施設中央値より5%超多い指標) ----
+    const usageGaps = USAGE_INDICATORS.filter(ind => ownUsage(ind) !== null).map(ind => {
+      const vals = FAC_KEYS.map(k => facilityUsage(k, ind));
+      const med = median(vals.slice(1));
+      const nAnnual = annual(CASES.filter(x => ind.procs.includes(x.procedure)).length);
+      const matched = ROWS.filter(r => ind.procs.includes(r.procedure) && ind.match(r));
+      const unit = matched.length ? matched.reduce((s, r) => s + r.price, 0) / matched.length : 0;
+      const diff = med ? (vals[0] - med) / med : 0;
+      // 使用率は「使用症例1件あたり平均本数」で本数換算
+      const perUse = ind.kind === 'count' ? 1 : (matched.length / Math.max(1, new Set(matched.map(caseKey)).size));
+      return { ind, a: vals[0], med, diff, value: Math.max(0, vals[0] - med) * nAnnual * unit * perUse };
+    });
+    const overUse = usageGaps.filter(g => g.diff > 0.05).sort((a, b) => b.value - a.value);
+
+    // ---- 新しい方式の導入状況 ----
+    const adoption = [
+      { label: 'PFA(アブレーション)', d: 'abl', g: 0, t: 'パルスフィールド(PFA)' },
+      { label: 'リードレスペースメーカ', d: 'cied', g: 0, t: 'リードレス' },
+      { label: 'S-ICD', d: 'cied', g: 1, t: '皮下植込型(S-ICD)' }
+    ].map(x => {
+      const vals = FAC_KEYS.map(k => typeShare(k, x.d, x.g, x.t));
+      if (vals[0] === null) return null;
+      return { ...x, a: vals[0], med: median(vals.slice(1)), rank: [...vals].sort((p, q) => q - p).indexOf(vals[0]) + 1 };
+    }).filter(Boolean);
+    const pfa = adoption.find(x => x.t === 'パルスフィールド(PFA)');
+
+    // ================= KPI =================
+    const costLevel = allDiff > 0.05 ? 'warning' : allDiff < -0.05 ? 'good' : 'good';
+    const kpis = [
+      { label: '材料償還額(年間)', value: fmtMan(annual(totalReimb)), sub: `${scopeLabel}・${fmtNum(annual(CASES.length))}症例/年`, badge: '' },
+      { label: '1症例あたり材料償還額', value: fmtYen(allVals[0]), sub: `他4施設中央値 ${fmtYen(allPeerMed)}・5施設中${allRank}位(低い順)`,
+        badge: statusBadge(costLevel, Math.abs(allDiff) <= 0.05 ? '同水準' : `中央値比 ${allDiff > 0 ? '+' : ''}${(allDiff * 100).toFixed(0)}%`),
+        info: '全処置の加重平均。処置構成の違いを揃えるため、B〜E病院はA病院の処置別症例数の年次変動を同率で反映しています' },
+      { label: '破棄・破損による損失(年間)', value: fmtMan(annual(discardValue)), sub: `償還対象材料 ${fmtNum(annual(discards.length))}件/年・請求できず病院負担`,
+        badge: statusBadge(annual(discardValue) > 1e6 ? 'warning' : 'good', annual(discardValue) > 1e6 ? '要対策' : '小さい') },
+      { label: '買取在庫(資金拘束)', value: fmtMan(purchaseStock), sub: `現時点・欠品リスク ${riskItems.length}品目`,
+        badge: statusBadge(riskItems.length ? 'warning' : 'good', riskItems.length ? '定数見直し' : '良好') }
+    ];
+    if (pfa) kpis.push({ label: 'PFA比率(新技術の導入)', value: (pfa.a * 100).toFixed(0) + '%', sub: `他4施設中央値 ${(pfa.med * 100).toFixed(0)}%・5施設中${pfa.rank}位(高い順)`,
+      badge: statusBadge(pfa.a < pfa.med * 0.9 ? 'warning' : 'good', pfa.a < pfa.med * 0.9 ? '導入が遅れ気味' : '他施設並み以上') });
+    document.getElementById('exKpis').innerHTML = kpis.map(k => `<div class="kpi"><div class="label">${k.label}${k.info ? `<span class="info-dot" title="${k.info}">i</span>` : ''}</div>
+      <div class="value">${k.value}</div><div class="sub">${k.sub}</div>${k.badge ? `<div style="margin-top:8px">${k.badge}</div>` : ''}</div>`).join('');
+
+    // ================= 改善余地(年間インパクト) =================
+    const levers = [
+      { title: '償還差益の改善(価格交渉・品目集約)', amount: annual(totalReimb) * marginPt / 100, kind: '年間',
+        detail: `材料償還額 ${fmtMan(annual(totalReimb))} × 差益率 +${marginPt}pt(想定)。重点は上位${top80}区分(償還額の80%=${fmtMan(annual(top80Value))})` },
+      { title: '破棄・破損の削減', amount: annual(discardValue) * discardCut, kind: '年間',
+        detail: `損失 ${fmtMan(annual(discardValue))} の ${Math.round(discardCut * 100)}%削減(想定)。上位: ${discardTop.join('、') || '-'}` },
+      { title: '買取在庫の圧縮(預託化・定数見直し)', amount: purchaseStock, kind: '一時的',
+        detail: `買取在庫 ${fmtMan(purchaseStock)} を預託化した場合に解放される資金の上限(現時点)` }
+    ];
+    if (overUse.length) {
+      const sum = overUse.reduce((s, g) => s + g.value, 0);
+      levers.push({ title: '材料使用量の差(診療科と協議)', amount: sum, kind: '参考', reference: true,
+        detail: `他施設中央値より多い指標: ${overUse.map(g => `${g.ind.label} +${(g.diff * 100).toFixed(0)}%`).join('、')}。償還対象材料のため収益も連動し、病院の純効果は差益分のみ` });
+    }
+    const leverMax = Math.max(...levers.map(l => l.amount)) || 1;
+    document.getElementById('exLevers').innerHTML = levers.map(l => `
+      <div class="lever ${l.reference ? 'ref' : ''}">
+        <div class="lever-head"><span class="lever-title">${l.title}</span><span class="lever-amount">${fmtMan(l.amount)}<small>${l.kind}</small></span></div>
+        <div class="lever-bar"><span style="width:${Math.max(2, l.amount / leverMax * 100)}%;background:${l.reference ? c.muted : l.kind === '一時的' ? c.series[2] : c.series[0]}"></span></div>
+        <div class="lever-detail">${l.detail}</div>
+      </div>`).join('');
+
+    // ================= 処置別の他施設比較 =================
+    const thead = ['処置', '症例数/年', '材料償還額/年', '構成比', '1症例あたり(A病院)', '他4施設中央値', '中央値比', '5施設順位(低い順)', '統計的判定(ファンネル)'];
+    if (yearSel.value !== 'all') thead.splice(5, 0, '前年比');
+    document.getElementById('exProcTable').querySelector('thead').innerHTML = '<tr>' + thead.map(h => `<th>${h}</th>`).join('') + '</tr>';
+    document.getElementById('exProcTable').querySelector('tbody').innerHTML = procRows.map(r => {
+      const judge = r.z > 3.09 ? statusBadge('critical', '高い(99.8%限界外)') : r.z > 1.96 ? statusBadge('warning', 'やや高い(95%限界外)')
+        : r.z < -1.96 ? statusBadge('good', '低い(効率的)') : statusBadge('good', '偶然の範囲内');
+      const diffTxt = Math.abs(r.diff) < 0.05 ? '<span style="color:var(--muted)">同水準</span>' : `<b style="color:${r.diff > 0 ? 'var(--serious)' : 'var(--s1)'}">${r.diff > 0 ? '+' : ''}${(r.diff * 100).toFixed(0)}%</b>`;
+      const prevCell = yearSel.value === 'all' ? '' : `<td>${r.prev ? `${r.avg >= r.prev ? '+' : ''}${((r.avg - r.prev) / r.prev * 100).toFixed(0)}%` : '<span style="color:var(--muted)">-</span>'}</td>`;
+      return `<tr><td><b>${shortProc(r.p)}</b></td><td>${fmtNum(r.annualN)}</td><td>${fmtMan(r.annualTotal)}</td><td>${fmtPct(r.annualTotal / annual(totalReimb))}</td>
+        <td>${fmtYen(r.avg)}</td>${prevCell}<td>${fmtYen(r.peerMed)}</td><td>${diffTxt}</td><td>${r.rank}位</td><td>${judge}</td></tr>`;
+    }).join('');
+    document.getElementById('exProcSub').textContent = `${scopeLabel}。A病院は実績、B〜E病院はA病院から生成した模擬施設。統計的判定は症例数を考慮したファンネルプロットの管理限界による${yearSel.value !== 'all' ? '。前年比は1症例あたり材料償還額(前年のデータ単位が異なる処置は参考値)' : ''}`;
+
+    // ================= パレート図 =================
+    const top = pareto.slice(0, 12);
+    makeChart('chartExPareto', {
+      type: 'bar',
+      data: {
+        labels: top.map(x => x.name.length > 12 ? x.name.slice(0, 12) + '…' : x.name),
+        datasets: [
+          { type: 'bar', label: '償還額(年間)', data: top.map(x => Math.round(annual(x.v))), backgroundColor: top.map((x, i) => i < top80 ? c.series[0] : c.grid), borderRadius: 4, yAxisID: 'y', order: 2 },
+          { type: 'line', label: '累積構成比', data: top.map(x => +(x.cumPct * 100).toFixed(1)), borderColor: c.series[1], backgroundColor: c.series[1], borderWidth: 2, pointRadius: 3, yAxisID: 'y1', order: 1, tension: 0 }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: legendOpt(true),
+          tooltip: { ...tooltipOpt(), callbacks: { title: (items) => top[items[0].dataIndex].name, label: (it) => it.dataset.yAxisID === 'y' ? `償還額: ${fmtMan(it.raw)}/年` : `累積: ${it.raw}%` } }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { ...tickOpt(), maxRotation: 50, minRotation: 50, font: { ...baseFont(), size: 10.5 } } },
+          y: { grid: gridOpt(), ticks: { ...tickOpt(), callback: (v) => (v / 1e4).toLocaleString('ja-JP') + '万' }, beginAtZero: true },
+          y1: { position: 'right', min: 0, max: 100, grid: { display: false }, ticks: { ...tickOpt(), callback: (v) => v + '%' } }
+        }
+      }
+    });
+    document.getElementById('exParetoSub').textContent = `${scopeLabel}・材料区分別(償還対象材料)。濃い棒=償還額の80%を占める上位${top80}区分(価格交渉の重点)`;
+
+    // ================= 結論(3行) =================
+    const highProcs = procRows.filter(r => r.z > 1.96);
+    const lines = [
+      Math.abs(allDiff) <= 0.05
+        ? `1症例あたり材料償還額は ${fmtYen(allVals[0])} で、他施設中央値と<b>同水準</b>(5施設中${allRank}位)。${highProcs.length ? `ただし<b>${highProcs.map(r => shortProc(r.p)).join('・')}</b>は統計的に高く、要因分析が必要です。` : '処置別にも統計的に突出した処置はありません。'}`
+        : `1症例あたり材料償還額は ${fmtYen(allVals[0])} で、他施設中央値より<b>${allDiff > 0 ? '高い' : '低い'}(${allDiff > 0 ? '+' : ''}${(allDiff * 100).toFixed(0)}%)</b>(5施設中${allRank}位)。${highProcs.length ? `${allDiff > 0 ? '特に' : '一方で'}<b>${highProcs.map(r => shortProc(r.p)).join('・')}</b>は統計的に高い水準で、要因分析が必要です。` : ''}`,
+      deviceCases.length
+        ? `植込みデバイス(PM・ICD・CRT)は症例の<b>${fmtPct(deviceShareCases, 0)}</b>で材料償還額の<b>${fmtPct(deviceShareValue, 0)}</b>を占めます。上位${top80}区分で償還額の80%に達するため、<b>価格交渉はこれらに集中</b>するのが効率的です。`
+        : `上位${top80}区分で材料償還額の80%に達するため、<b>価格交渉はこれらに集中</b>するのが効率的です。`,
+      `改善余地は、差益率+${marginPt}ptで<b>年${fmtMan(levers[0].amount)}</b>、破棄・破損${Math.round(discardCut * 100)}%削減で<b>年${fmtMan(levers[1].amount)}</b>、買取在庫の預託化で<b>最大${fmtMan(purchaseStock)}の資金解放</b>(いずれも想定値)。`
+    ];
+    document.getElementById('exHeadline').innerHTML = `<div class="exec-title">結論(${scopeLabel})</div><ol>${lines.map(l => `<li>${l}</li>`).join('')}</ol>`;
+
+    // ================= 経営判断が必要な事項 =================
+    const decisions = [];
+    highProcs.forEach(r => decisions.push({ level: 'critical', area: '診療・コスト', text: `${shortProc(r.p)}の1症例あたり材料費が他施設比で統計的に高い(中央値比${r.diff > 0 ? '+' : ''}${(r.diff * 100).toFixed(0)}%)。材料使用量の要因分析を診療科と協議することの承認` }));
+    decisions.push({ level: 'warning', area: '購買', text: `上位${top80}区分(${pareto.slice(0, Math.min(3, top80)).map(x => x.name.replace(/[（(].*$/, '')).join('、')}等、年${fmtMan(annual(top80Value))})に絞った価格交渉・品目集約の方針承認` });
+    if (annual(discardValue) > 1e6) decisions.push({ level: 'warning', area: '医療安全・コスト', text: `高額品の開封前確認(ダブルチェック)手順の導入。破棄・破損損失 年${fmtMan(annual(discardValue))}` });
+    adoption.filter(x => x.a < x.med * 0.9).forEach(x => decisions.push({ level: 'warning', area: '投資・新技術', text: `${x.label}の比率が他施設中央値を下回る(A病院 ${(x.a * 100).toFixed(0)}% / 中央値 ${(x.med * 100).toFixed(0)}%)。導入・拡大計画(対象患者数・収支・教育体制)の検討` }));
+    adoption.filter(x => x.t === 'パルスフィールド(PFA)' && x.a >= x.med * 0.9).forEach(() => decisions.push({ level: 'good', area: '在庫', text: 'PFAへの移行が進行中。クライオ関連品の定数削減・PFA関連品の定数設定(実施状況の確認)' }));
+    if (riskItems.length) decisions.push({ level: 'warning', area: '在庫', text: `欠品リスク${riskItems.length}品目(${riskItems.slice(0, 3).map(i => i.name).join('、')})の定数見直し` });
+    if (overUse.length) decisions.push({ level: 'good', area: '診療プロセス', text: `材料使用量が他施設より多い指標(${overUse.slice(0, 3).map(g => g.ind.label).join('、')})について、医療の質(合併症・成績)とあわせた診療科との意見交換` });
+    document.getElementById('exDecisions').innerHTML = decisions.map((d, i) => `
+      <div class="decision"><span class="decision-no">${i + 1}</span><div><div class="decision-area">${statusBadge(d.level, d.area)}</div><div class="decision-text">${d.text}</div></div></div>`).join('');
+  }
+
+  // ================================================================
   // タブ切替
   // ================================================================
-  const RENDERERS = { overview: renderOverview, benchmark: renderBenchmark, dealer: renderDealer, inventory: renderInventory, device: renderDevice };
-  let activeTab = 'overview';
+  const RENDERERS = { exec: renderExecutive, overview: renderOverview, benchmark: renderBenchmark, dealer: renderDealer, inventory: renderInventory, device: renderDevice };
+  let activeTab = 'exec';
   function renderActiveTab() { RENDERERS[activeTab](); }
 
   document.getElementById('tabNav').addEventListener('click', (e) => {
@@ -1210,5 +1423,5 @@
   });
 
   applyYear();
-  renderOverview();
+  renderExecutive();
 })();

@@ -138,6 +138,25 @@ th.dev-col:hover{color:var(--text);}
 th.dev-col.active{color:var(--s1);box-shadow:inset 0 -2px 0 var(--s1);}
 #bmDevTable .heatcell{line-height:1.5;}
 #bmUsageTable .heatcell{color:var(--text);}
+.filter-group input[type=number]{width:100%;font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);}
+.exec-headline{background:var(--surface);border:1px solid var(--border);border-left:5px solid var(--s1);border-radius:var(--radius);padding:16px 20px;margin-bottom:18px;box-shadow:var(--shadow);}
+.exec-headline .exec-title{font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;}
+.exec-headline ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:14px;line-height:1.7;}
+.exec-headline b{color:var(--text);}
+.lever{padding:10px 0;border-bottom:1px solid var(--grid);}
+.lever:last-child{border-bottom:none;}
+.lever-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;}
+.lever-title{font-size:13px;font-weight:700;}
+.lever-amount{font-size:18px;font-weight:700;white-space:nowrap;}
+.lever-amount small{font-size:11px;font-weight:600;color:var(--muted);margin-left:4px;}
+.lever.ref .lever-title, .lever.ref .lever-amount{color:var(--text-sec);}
+.lever-bar{height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden;margin:6px 0;}
+.lever-bar span{display:block;height:100%;border-radius:4px;}
+.lever-detail{font-size:11.5px;color:var(--text-sec);line-height:1.6;}
+.decision{display:flex;gap:12px;align-items:flex-start;padding:10px 4px;border-bottom:1px solid var(--grid);}
+.decision:last-child{border-bottom:none;}
+.decision-no{flex:none;width:24px;height:24px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--text-sec);}
+.decision-text{font-size:13px;margin-top:4px;line-height:1.6;}
 .funnel-note{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:12px;color:var(--text-sec);}
 .funnel-item{display:inline-flex;align-items:center;gap:6px;}
 .mix-row{display:grid;grid-template-columns:210px 1fr;gap:14px;align-items:center;padding:10px;border-radius:10px;cursor:pointer;}
@@ -171,7 +190,8 @@ footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;colo
     </div>
   </div>
   <nav class="tabs" id="tabNav">
-    <button data-tab="overview" class="active">データ概観</button>
+    <button data-tab="exec" class="active">経営サマリー</button>
+    <button data-tab="overview">データ概観</button>
     <button data-tab="benchmark">他施設ベンチマーク</button>
     <button data-tab="dealer">ディーラー・メーカー市場戦略</button>
     <button data-tab="inventory">在庫情報</button>
@@ -182,7 +202,19 @@ footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;colo
 
 <div class="layout">
 <aside class="sidebar">
-  <div class="sidebar-panel active" id="sidebar-overview">
+  <div class="sidebar-panel active" id="sidebar-exec">
+    <p class="sidebar-title">シナリオ(想定値)</p>
+    <div class="filter-group">
+      <label>償還差益率の改善幅(pt)</label>
+      <input type="number" id="exMarginPt" value="1" min="0" max="10" step="0.5">
+    </div>
+    <div class="filter-group">
+      <label>破棄・破損の削減目標(%)</label>
+      <input type="number" id="exDiscardCut" value="50" min="0" max="100" step="10">
+    </div>
+    <span class="hint">対象年は画面右上で指定します。金額は年換算です。<br>購入価格データが無いため、差益改善は「償還額×改善幅」による想定値です。施設B〜Eは模擬施設です。</span>
+  </div>
+  <div class="sidebar-panel" id="sidebar-overview">
     <p class="sidebar-title">フィルター</p>
     <div class="filter-group">
       <label>処置内容</label>
@@ -249,8 +281,39 @@ footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;colo
 
 <main>
 
+  <!-- ============ TAB 0: 経営サマリー ============ -->
+  <section class="panel active" id="panel-exec">
+    <div class="exec-headline" id="exHeadline"></div>
+    <div class="kpi-row" id="exKpis"></div>
+
+    <div class="grid">
+      <div class="card wide">
+        <h3>処置別 材料費の他施設比較<span class="info-dot" title="【種類】表&#10;【わかること】処置ごとの年間材料償還額と構成比、1症例あたり材料費の他施設中央値との差・順位、症例数を考慮した統計的な高低判定(ファンネルプロット)を一覧で確認できます。">i</span></h3>
+        <div class="card-sub" id="exProcSub"></div>
+        <div class="table-scroll" style="max-height:none;">
+          <table id="exProcTable"><thead></thead><tbody></tbody></table>
+        </div>
+      </div>
+      <div class="card">
+        <h3>改善余地(年間インパクト)<span class="info-dot" title="【種類】金額の比較バー&#10;【わかること】価格交渉・破棄削減・在庫圧縮などの打ち手ごとに、どれだけの金額効果が見込めるかを比較し、優先順位を付けられます。&#10;【注意】差益改善・破棄削減は左のシナリオ値による想定。在庫圧縮は一時的な資金解放。使用量の差は償還対象材料のため収益も連動する参考値です。">i</span></h3>
+        <div class="card-sub">左のシナリオ値で再計算。灰色は参考値</div>
+        <div id="exLevers"></div>
+      </div>
+      <div class="card">
+        <h3>材料区分別 償還額のパレート図<span class="info-dot" title="【グラフの種類】パレート図(棒=償還額、折れ線=累積構成比)&#10;【わかること】少数の材料区分に金額が集中している様子がわかり、価格交渉や品目集約をどこに集中すべきかを判断できます。">i</span></h3>
+        <div class="card-sub" id="exParetoSub"></div>
+        <div class="chart-wrap tall"><canvas id="chartExPareto"></canvas></div>
+      </div>
+      <div class="card wide">
+        <h3>経営判断が必要な事項<span class="info-dot" title="【種類】リスト(自動抽出)&#10;【わかること】他施設比較・損失・在庫・新技術の導入状況から、経営会議で判断・承認が必要な事項を抽出しています。">i</span></h3>
+        <div class="card-sub">他施設比較・損失・在庫・新技術の導入状況から自動抽出</div>
+        <div id="exDecisions"></div>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ TAB 1: データ概観 ============ -->
-  <section class="panel active" id="panel-overview">
+  <section class="panel" id="panel-overview">
     <div class="kpi-row" id="ovKpis"></div>
 
     <div class="grid">
