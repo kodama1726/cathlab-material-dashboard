@@ -129,6 +129,10 @@ tbody tr:hover{background:var(--surface-2);}
 .position-summary .box .v.good{color:var(--good);}
 .position-summary .box .v.critical{color:var(--critical);}
 .position-summary .box .s{font-size:11.5px;color:var(--text-sec);margin-top:2px;}
+th.dev-col{cursor:pointer;white-space:normal;min-width:96px;}
+th.dev-col:hover{color:var(--text);}
+th.dev-col.active{color:var(--s1);box-shadow:inset 0 -2px 0 var(--s1);}
+#bmDevTable .heatcell{line-height:1.5;}
 .mix-row{display:grid;grid-template-columns:210px 1fr;gap:14px;align-items:center;padding:10px;border-radius:10px;cursor:pointer;}
 .mix-row:hover{background:var(--surface-2);}
 .mix-row.active{background:var(--surface-2);box-shadow:inset 3px 0 0 var(--s1);}
@@ -180,6 +184,10 @@ footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;colo
     <div class="filter-group">
       <label>処置内容</label>
       <select id="bmProc"></select>
+    </div>
+    <div class="filter-group">
+      <label>デバイス群(多様性比較)</label>
+      <select id="bmDevGroup"></select>
     </div>
     <span class="hint">施設A=自施設(本データベースの値) / 施設B〜E=A病院から生成した模擬施設</span>
   </div>
@@ -304,6 +312,16 @@ footer{max-width:1440px;margin:0 auto;padding:10px 24px 40px;font-size:11px;colo
         <h3>処置構成比の比較<span class="info-dot" title="【グラフの種類】100%積み上げ横棒グラフ&#10;【わかること】各施設がどの処置(PCI・アブレーション・PM/ICD等)にどれだけ注力しているか、診療の得意分野の違いがわかります。">i</span></h3>
         <div class="card-sub">施設別・処置内容の構成比(100%積み上げ、全処置対象)</div>
         <div class="chart-wrap tall"><canvas id="chartBmMix"></canvas></div>
+      </div>
+      <div class="card wide" id="bmDevCards">
+        <h3>主要デバイスの多様性 比較<span class="info-dot" title="【種類】表(色の濃さ=列内での実効製品数の相対値)+100%積み上げ横棒グラフ&#10;【わかること】同じ用途のデバイス(例: アブレーションカテーテルの高周波/クライオバルーン/パルスフィールド等)を各施設がどれだけ多様な方式・製品で運用しているか、新しい方式の導入状況を比較できます。&#10;【算出方法】A病院は実績から集計。B〜E病院はA病院の方式別シェアに施設特性(大学病院・心臓血管センター等)を反映した係数を適用して生成した模擬値です。">i</span></h3>
+        <div class="card-sub">各セル=採用している方式数/主な方式数、採用製品数・実効製品数(使用の偏りを考慮した製品の多様性)。色が濃いほど多様。見出しやセルをクリックすると下の構成比が切り替わります。施設B〜Eは模擬データ</div>
+        <div class="table-scroll" style="max-height:none;">
+          <table id="bmDevTable"><thead></thead><tbody></tbody></table>
+        </div>
+        <h3 id="bmDevTitle" style="margin-top:22px;"></h3>
+        <div class="card-sub">施設別の方式構成比(使用件数ベース・全期間)。ホバーで採用製品数を表示</div>
+        <div class="chart-wrap tall"><canvas id="chartBmDevMix"></canvas></div>
       </div>
       <div class="card wide">
         <h3>施設サマリ表<span class="info-dot" title="【種類】表&#10;【わかること】主要指標を一覧化し、詳細な数値で施設間を比較できます。">i</span></h3>

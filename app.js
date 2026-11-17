@@ -382,6 +382,8 @@
       </tr>`;
     }).join('');
     document.getElementById('bmTable').querySelector('tbody').innerHTML = tbody;
+
+    renderDeviceBenchmark(proc);
   }
 
   // ================================================================
@@ -698,6 +700,94 @@
   function typeColor(types, t) {
     return t === OTHER_TYPE ? colors().muted : colors().series[types.indexOf(t) % colors().series.length];
   }
+
+  // ---- 他施設ベンチマーク: 主要デバイスの多様性 ----
+  // A病院は実績から集計。B〜Eは A病院の方式別シェアに施設プロファイル(data.js benchmark.deviceProfiles)を適用した模擬値
+  const ALL_DEVICE_GROUPS = DEVICE_DOMAINS.flatMap(dom => dom.groups.map(g => ({ dom, g })));
+  const bmDevGroupSel = document.getElementById('bmDevGroup');
+  bmDevGroupSel.addEventListener('change', () => renderDeviceBenchmark(bmProcSel.value));
+
+  function facilityDeviceStats(k, dom, g) {
+    const s = summarizeGroup(g, dom.procs);
+    const n = s.rows.length;
+    const aShares = s.types.map(t => n ? s.byType.get(t) / n : 0);
+    const aEff = n ? 1 / s.products.reduce((acc, p) => acc + (p.count / n) ** 2, 0) : 0;
+    let shares = aShares, nProducts = s.products.length, eff = aEff;
+    if (k !== 'A' && n) {
+      const pf = D.benchmark.deviceProfiles[k][g.name] || {};
+      const mult = pf.mult || {}, add = pf.add || {};
+      const raw = s.types.map((t, i) => aShares[i] * (mult[t.label] !== undefined ? mult[t.label] : 1) + (add[t.label] || 0));
+      const sum = raw.reduce((a, b) => a + b, 0) || 1;
+      shares = raw.map(v => v / sum);
+      const used = shares.filter(v => v > 0).length;
+      nProducts = Math.max(used, s.products.length + (pf.productDelta || 0));
+      eff = Math.min(nProducts, Math.max(1, aEff * nProducts / s.products.length));
+    }
+    const used = s.types.filter((t, i) => t !== OTHER_TYPE && shares[i] > 0).length;
+    return { types: s.types, shares, used, nTypes: g.types.length, nProducts, eff };
+  }
+
+  function renderDeviceBenchmark(proc) {
+    const c = colors();
+    const list = ALL_DEVICE_GROUPS.filter(x => proc === 'all' || x.dom.procs.includes(proc));
+    const card = document.getElementById('bmDevCards');
+    card.style.display = list.length ? '' : 'none';
+    if (!list.length) return;
+    const cur = bmDevGroupSel.value;
+    bmDevGroupSel.innerHTML = list.map(x => `<option value="${x.g.name}">${x.g.name}</option>`).join('');
+    if (list.some(x => x.g.name === cur)) bmDevGroupSel.value = cur;
+    const sel = list.find(x => x.g.name === bmDevGroupSel.value);
+
+    // 施設×デバイス群の多様性表(色の濃さ=列内での実効製品数の相対値)
+    const stats = FAC_KEYS.map(k => list.map(x => facilityDeviceStats(k, x.dom, x.g)));
+    const colMax = list.map((x, j) => Math.max(...stats.map(row => row[j].eff)) || 1);
+    const thead = '<tr><th>施設</th>' + list.map(x => `<th class="dev-col ${x === sel ? 'active' : ''}" data-group="${x.g.name}">${x.g.name}</th>`).join('') + '</tr>';
+    const tbody = FAC_KEYS.map((k, i) => '<tr><td><b>' + facShort(k) + (k === 'A' ? '(自施設)' : '') + '</b></td>' + stats[i].map((st, j) => {
+      const alpha = 0.1 + 0.75 * (st.eff / colMax[j]);
+      return `<td><div class="heatcell" data-group="${list[j].g.name}" style="cursor:pointer;background:color-mix(in srgb, var(--s1) ${(alpha * 100).toFixed(0)}%, transparent);color:${alpha > 0.7 ? '#fff' : 'var(--text)'}">${st.used}/${st.nTypes}方式<br><span style="font-weight:400">${st.nProducts}製品・実効${st.eff.toFixed(1)}</span></div></td>`;
+    }).join('') + '</tr>').join('');
+    const table = document.getElementById('bmDevTable');
+    table.querySelector('thead').innerHTML = thead;
+    table.querySelector('tbody').innerHTML = tbody;
+
+    // 選択中デバイス群の方式構成(100%積み上げ、上からA〜E)
+    const facKeys = [...FAC_KEYS].reverse();
+    const selStats = facKeys.map(k => facilityDeviceStats(k, sel.dom, sel.g));
+    const types = selStats[0].types;
+    document.getElementById('bmDevTitle').textContent = `方式構成の比較: ${sel.g.name}`;
+    makeChart('chartBmDevMix', {
+      type: 'bar',
+      data: {
+        labels: facKeys.map(k => facShort(k) + (k === 'A' ? '(自施設)' : '')),
+        datasets: types.map((t, i) => ({
+          label: t.label,
+          data: selStats.map(st => +(st.shares[i] * 100).toFixed(1)),
+          backgroundColor: typeColor(types, t), borderColor: c.surface, borderWidth: 2, stack: 'dev'
+        }))
+      },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: legendOpt(true),
+          tooltip: { ...tooltipOpt(), callbacks: {
+            label: (it) => `${it.dataset.label}: ${it.raw}%`,
+            footer: (items) => { const st = selStats[items[0].dataIndex]; return `採用 ${st.used}/${st.nTypes}方式・${st.nProducts}製品・実効製品数 ${st.eff.toFixed(1)}`; }
+          } }
+        },
+        scales: {
+          x: { stacked: true, min: 0, max: 100, grid: gridOpt(), ticks: { ...tickOpt(), callback: (v) => v + '%' } },
+          y: { stacked: true, grid: { display: false }, ticks: tickOpt() }
+        }
+      }
+    });
+  }
+
+  document.getElementById('bmDevTable').addEventListener('click', (e) => {
+    const el = e.target.closest('[data-group]');
+    if (!el) return;
+    bmDevGroupSel.value = el.dataset.group;
+    renderDeviceBenchmark(bmProcSel.value);
+  });
 
   function renderDevice() {
     applyChartDefaults();
